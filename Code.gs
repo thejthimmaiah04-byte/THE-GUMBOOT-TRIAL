@@ -62,7 +62,8 @@ function doPost(e) {
 function postMessageResponse_(reqId, result) {
   var payload = JSON.stringify({ reqId: reqId, result: result });
   var html = '<script>parent.postMessage(' + payload + ', "*");<\/script>';
-  return HtmlService.createHtmlOutput(html);
+  return HtmlService.createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
 // ---------- Sheet helpers ----------
