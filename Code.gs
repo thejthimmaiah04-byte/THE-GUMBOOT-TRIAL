@@ -61,7 +61,9 @@ function doPost(e) {
 
 function postMessageResponse_(reqId, result) {
   var payload = JSON.stringify({ reqId: reqId, result: result });
-  var html = '<script>parent.postMessage(' + payload + ', "*");<\/script>';
+  // Apps Script nests this response inside its own wrapper + sandboxFrame,
+  // so top (not parent) is needed to reach the actual embedding page.
+  var html = '<script>top.postMessage(' + payload + ', "*");<\/script>';
   return HtmlService.createHtmlOutput(html)
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
