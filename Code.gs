@@ -2,13 +2,67 @@
 // Bind this script to a Google Sheet. Deploy as a web app.
 // Sheets "Trials", "Boots", "Snakes" are auto-created on first use.
 // A Google Drive folder "TLT_Gumboot_Trial_Photos" is auto-created for images.
+//
+// The front-end is a static PWA hosted on GitHub Pages, not served from here.
+// Apps Script web apps don't send Access-Control-Allow-Origin headers, so a
+// cross-origin fetch() from the GitHub Pages app would be blocked by CORS.
+// Instead:
+//   - Reads (doGet) support JSONP: ?action=...&callback=fn — <script src>
+//     loads aren't subject to CORS, so this works cleanly.
+//   - Writes (doPost) are submitted via a hidden iframe + HTML <form> POST
+//     (also exempt from CORS). The response is a tiny HTML page whose inline
+//     script calls parent.postMessage(...) to hand the result back to the
+//     static page — postMessage is explicitly designed to cross origins.
 
-// ---------- Serve the web app ----------
+// ---------- Reads (JSONP) ----------
 
-function doGet() {
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('TLT Gumboot Trial')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+function doGet(e) {
+  var action = e.parameter.action;
+  var callback = e.parameter.callback;
+  var result;
+  try {
+    if (action === 'getBoots') result = getBoots();
+    else if (action === 'getSnakes') result = getSnakes();
+    else if (action === 'getAllTrials') result = getAllTrials();
+    else result = { error: 'Unknown action: ' + action };
+  } catch (err) {
+    result = { error: err.message };
+  }
+  if (callback) {
+    return ContentService.createTextOutput(callback + '(' + JSON.stringify(result) + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+  }
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ---------- Writes (hidden-iframe form POST + postMessage) ----------
+
+function doPost(e) {
+  var reqId = e.parameter.reqId || '';
+  var action = e.parameter.action;
+  var data;
+  try {
+    data = JSON.parse(e.parameter.data || '{}');
+  } catch (err) {
+    return postMessageResponse_(reqId, { success: false, message: 'Invalid request data' });
+  }
+  var result;
+  try {
+    if (action === 'registerBoot') result = registerBoot(data);
+    else if (action === 'registerSnake') result = registerSnake(data);
+    else if (action === 'submitTrial') result = submitTrial(data);
+    else result = { success: false, message: 'Unknown action: ' + action };
+  } catch (err) {
+    result = { success: false, message: err.message };
+  }
+  return postMessageResponse_(reqId, result);
+}
+
+function postMessageResponse_(reqId, result) {
+  var payload = JSON.stringify({ reqId: reqId, result: result });
+  var html = '<script>parent.postMessage(' + payload + ', "*");<\/script>';
+  return HtmlService.createHtmlOutput(html);
 }
 
 // ---------- Sheet helpers ----------
