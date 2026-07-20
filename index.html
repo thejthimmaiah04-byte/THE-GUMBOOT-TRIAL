@@ -988,6 +988,8 @@ var snakesCache = [];
 
 // ----- Init -----
 document.addEventListener('DOMContentLoaded', function() {
+  history.replaceState({ page: 'home' }, '', '#home');
+  history.pushState({ page: 'home' }, '', '#home');
   document.getElementById('tile-boot-icon').src = document.querySelector('#splash .logo-wrap img').src;
   var today = new Date().toISOString().split('T')[0];
   document.getElementById('t-date').value = today;
@@ -1019,13 +1021,39 @@ function updateOnlineStatus() {
 }
 
 // ----- Navigation -----
-function switchPage(name) {
+// ----- Navigation (back-button aware) -----
+// A page switch triggered by tapping a tile/button pushes a history entry, so
+// the hardware/browser back button steps back through app pages instead of
+// closing the app. Two 'home' entries are kept at the base of the stack so
+// pressing back once while already on Home shows an "exit?" warning instead
+// of closing immediately; pressing back again (with nothing left to pop)
+// lets the browser exit for real.
+function renderPage(name) {
   document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   document.getElementById('page-' + name).classList.add('active');
   var titles = { home: 'Home', checklist: 'Checklist', trial: 'Trial Log & Record', boot: 'Register Boot', snake: 'Register Snake' };
   document.getElementById('header-sub').textContent = titles[name] || '';
   window.scrollTo(0, 0);
 }
+
+function switchPage(name) {
+  var current = document.querySelector('.page.active');
+  var currentName = current ? current.id.replace('page-', '') : null;
+  if (name === currentName) return;
+  renderPage(name);
+  history.pushState({ page: name }, '', '#' + name);
+}
+
+window.addEventListener('popstate', function(e) {
+  var wasHome = !!document.getElementById('page-home').classList.contains('active');
+  var name = (e.state && e.state.page) || 'home';
+  if (name === 'home' && wasHome) {
+    // Already on Home, user pressed back again — warn instead of exiting silently.
+    showToast('Press back again to exit', 'warn');
+    return;
+  }
+  renderPage(name);
+});
 
 // ----- Checklist -----
 var CHECKLIST_KEY = 'tlt_gumboot_checklist_v1';
