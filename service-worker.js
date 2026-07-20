@@ -1,4 +1,4 @@
-var CACHE_NAME = 'gumboot-trial-v1';
+var CACHE_NAME = 'gumboot-trial-v2';
 var ASSETS = ['./', './index.html', './manifest.json', './app-icon.png', './app-icon-192.png'];
 
 self.addEventListener('install', function(event) {
