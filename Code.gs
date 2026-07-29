@@ -150,7 +150,7 @@ function formatDateStr_(val) {
 }
 
 function todayDateStr_() {
-  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
 }
 
 function getAllTrials() {
