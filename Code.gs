@@ -74,7 +74,7 @@ var TRIAL_HEADERS = [
   'Trial_ID','Date','Session','Boot_ID','Boot_Brand','Boot_Size',
   'Boot_Thick_T','Boot_Thick_LM','Boot_Thick_I',
   'Snake_ID','Species_Code','Age_Class','Sex',
-  'TL_cm','SVL_cm','HL_mm','HW_mm','BM_g',
+  'TL_mm','SVL_mm','HL_mm','HW_mm','BM_g',
   'FL_L_mm','FL_R_mm','FBW_mm','Dentition',
   'Outcome','Strikes','Region_Struck',
   'Temp_C','Humidity_pct','Photo_Links','Notes','Timestamp'
@@ -89,9 +89,10 @@ var BOOT_HEADERS = [
 
 var SNAKE_HEADERS = [
   'Snake_ID','Species_Code','Common_Name','Age_Class','Sex',
-  'TL_cm','SVL_cm','HL_mm','HW_mm','BM_g',
+  'TL_mm','SVL_mm','HL_mm','HW_mm','BM_g',
   'FL_L_mm','FL_R_mm','FBW_mm','Dentition',
-  'Body_Condition','Last_Feed_Date','Photo_Links','Registered_Date'
+  'Body_Condition','Last_Feed_Date','Photo_Links','Registered_Date',
+  'Iso_In_Time','Iso_Out_Time','Time_To_Unconscious_Sec'
 ];
 
 function getOrCreateSheet_(name, headers) {
@@ -134,7 +135,8 @@ function getSnakes() {
     result.push({
       snakeId: r[0], speciesCode: r[1], commonName: r[2], ageClass: r[3],
       sex: r[4], tl: r[5], svl: r[6], hl: r[7], hw: r[8], bm: r[9],
-      flL: r[10], flR: r[11], fbw: r[12], dentition: r[13], bodyCondition: r[14]
+      flL: r[10], flR: r[11], fbw: r[12], dentition: r[13], bodyCondition: r[14],
+      isoInTime: r[18], isoOutTime: r[19], timeToUnconsciousSec: r[20]
     });
   }
   return result;
@@ -250,7 +252,8 @@ function registerSnake(data) {
     data.tl, data.svl, data.hl, data.hw, data.bm,
     data.flL, data.flR, data.fbw, DENT[data.speciesCode] || '',
     data.bodyCondition, data.lastFeedDate,
-    photoLinks.join('\n'), new Date().toISOString()
+    photoLinks.join('\n'), new Date().toISOString(),
+    data.isoInTime || '', data.isoOutTime || '', data.timeToUnconsciousSec || ''
   ]);
 
   return { success: true, message: 'Snake registered: ' + data.snakeId };

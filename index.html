@@ -855,29 +855,16 @@
   </div>
 
   <div class="card">
-    <div class="card-title">Morphometrics</div>
+    <div class="card-title">Isoflurane Induction</div>
     <div class="row">
-      <div>
-        <label for="s-tl">TL &ndash; Total length (cm)</label>
-        <input type="number" id="s-tl" step="0.1" inputmode="decimal" placeholder="cm">
-      </div>
-      <div>
-        <label for="s-svl">SVL &ndash; Snout-vent (cm)</label>
-        <input type="number" id="s-svl" step="0.1" inputmode="decimal" placeholder="cm">
-      </div>
+      <button type="button" class="btn btn-primary" id="btn-snake-in" onclick="markSnakeIn()" style="margin-top:0">Snake In</button>
+      <button type="button" class="btn btn-primary" id="btn-snake-out" onclick="markSnakeOut()" style="margin-top:0" disabled>Snake Out</button>
     </div>
-    <div class="row">
-      <div>
-        <label for="s-hl">HL &ndash; Head length (mm)</label>
-        <input type="number" id="s-hl" step="0.1" inputmode="decimal" placeholder="mm">
-      </div>
-      <div>
-        <label for="s-hw">HW &ndash; Head width (mm)</label>
-        <input type="number" id="s-hw" step="0.1" inputmode="decimal" placeholder="mm">
-      </div>
+    <div class="detail-summary" id="iso-time-summary" style="display:none">
+      In: <span id="iso-in-display">&mdash;</span><br>
+      Out: <span id="iso-out-display">&mdash;</span><br>
+      Time to unconscious: <span id="iso-duration-display">&mdash;</span>
     </div>
-    <label for="s-bm">BM &ndash; Body mass (g)</label>
-    <input type="number" id="s-bm" step="0.1" inputmode="decimal" placeholder="g">
   </div>
 
   <div class="card">
@@ -892,22 +879,32 @@
         <input type="number" id="s-flr" step="0.1" inputmode="decimal" placeholder="mm">
       </div>
     </div>
-    <label for="s-fbw">FBW &ndash; Fang base width (mm) <span style="color:var(--text-light)">&mdash; optional</span></label>
-    <input type="number" id="s-fbw" step="0.1" inputmode="decimal" placeholder="mm">
   </div>
 
   <div class="card">
-    <div class="card-title">Fang Photos</div>
-    <div class="photo-slot">
-      <label>Left fang (against mm ruler)</label>
-      <input type="file" accept="image/*" capture="environment" id="s-photo-fang-l" onchange="previewPhoto(this,'prev-s-fl')">
-      <img class="preview" id="prev-s-fl">
+    <div class="card-title">Morphometrics</div>
+    <div class="row">
+      <div>
+        <label for="s-svl">SVL &ndash; Snout-vent (mm)</label>
+        <input type="number" id="s-svl" step="0.1" inputmode="decimal" placeholder="mm">
+      </div>
+      <div>
+        <label for="s-tl">TL &ndash; Total length (mm)</label>
+        <input type="number" id="s-tl" step="0.1" inputmode="decimal" placeholder="mm">
+      </div>
     </div>
-    <div class="photo-slot">
-      <label>Right fang (against mm ruler)</label>
-      <input type="file" accept="image/*" capture="environment" id="s-photo-fang-r" onchange="previewPhoto(this,'prev-s-fr')">
-      <img class="preview" id="prev-s-fr">
+    <div class="row">
+      <div>
+        <label for="s-hw">HW &ndash; Head width (mm)</label>
+        <input type="number" id="s-hw" step="0.1" inputmode="decimal" placeholder="mm">
+      </div>
+      <div>
+        <label for="s-hl">HL &ndash; Head length (mm)</label>
+        <input type="number" id="s-hl" step="0.1" inputmode="decimal" placeholder="mm">
+      </div>
     </div>
+    <label for="s-bm">BM &ndash; Body mass (g)</label>
+    <input type="number" id="s-bm" step="0.1" inputmode="decimal" placeholder="g">
   </div>
 
   <div class="sticky-spacer"></div>
@@ -1324,8 +1321,8 @@ function onSnakeSelect() {
     info.innerHTML =
       '<span>' + selectedSnake.commonName + '</span> &middot; ' +
       selectedSnake.ageClass + ' &middot; Sex: ' + selectedSnake.sex +
-      '<br>TL: <span>' + selectedSnake.tl + '</span> cm, ' +
-      'SVL: <span>' + selectedSnake.svl + '</span> cm, ' +
+      '<br>TL: <span>' + selectedSnake.tl + '</span> mm, ' +
+      'SVL: <span>' + selectedSnake.svl + '</span> mm, ' +
       'BM: <span>' + selectedSnake.bm + '</span> g' +
       '<br>Fang L: <span>' + selectedSnake.flL + '</span> mm, ' +
       'R: <span>' + selectedSnake.flR + '</span> mm &middot; ' +
@@ -1650,11 +1647,6 @@ async function submitSnakeForm() {
 
   showLoading('Registering snake...');
 
-  var photos = await collectPhotos([
-    { id: 's-photo-fang-l', label: 'fang_left' },
-    { id: 's-photo-fang-r', label: 'fang_right' }
-  ]);
-
   var data = {
     snakeId: snakeId,
     speciesCode: species,
@@ -1667,10 +1659,12 @@ async function submitSnakeForm() {
     bm: parseFloat(document.getElementById('s-bm').value) || '',
     flL: parseFloat(document.getElementById('s-fll').value) || '',
     flR: parseFloat(document.getElementById('s-flr').value) || '',
-    fbw: parseFloat(document.getElementById('s-fbw').value) || '',
     bodyCondition: document.getElementById('s-condition').value,
     lastFeedDate: document.getElementById('s-lastfeed').value || '',
-    photos: photos
+    isoInTime: snakeInTime ? snakeInTime.toISOString() : '',
+    isoOutTime: snakeOutTime ? snakeOutTime.toISOString() : '',
+    timeToUnconsciousSec: (snakeInTime && snakeOutTime) ? Math.round((snakeOutTime - snakeInTime) / 1000) : '',
+    photos: []
   };
 
   apiPost('registerSnake', data)
@@ -1692,19 +1686,51 @@ async function submitSnakeForm() {
 
 function clearSnakeForm() {
   ['s-species','s-age'].forEach(function(id) { document.getElementById(id).value = ''; });
-  ['s-num','s-tl','s-svl','s-hl','s-hw','s-bm','s-fll','s-flr','s-fbw'].forEach(function(id) {
+  ['s-num','s-tl','s-svl','s-hl','s-hw','s-bm','s-fll','s-flr'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
   document.getElementById('s-sex').value = 'U';
   document.getElementById('s-condition').value = 'Good';
   document.getElementById('s-lastfeed').value = '';
-  ['s-photo-fang-l','s-photo-fang-r'].forEach(function(id) {
-    document.getElementById(id).value = '';
-  });
-  ['prev-s-fl','prev-s-fr'].forEach(function(id) {
-    document.getElementById(id).classList.remove('visible');
-  });
+  resetSnakeInOut();
   updateSnakeId();
+}
+
+// ----- Isoflurane induction timing -----
+var snakeInTime = null;
+var snakeOutTime = null;
+
+function markSnakeIn() {
+  snakeInTime = new Date();
+  document.getElementById('btn-snake-in').textContent = 'Snake In: ' + snakeInTime.toLocaleTimeString([], { hour12: false });
+  document.getElementById('btn-snake-in').disabled = true;
+  document.getElementById('btn-snake-out').disabled = false;
+}
+
+function markSnakeOut() {
+  snakeOutTime = new Date();
+  document.getElementById('btn-snake-out').textContent = 'Snake Out: ' + snakeOutTime.toLocaleTimeString([], { hour12: false });
+  document.getElementById('btn-snake-out').disabled = true;
+
+  var totalSeconds = Math.round((snakeOutTime - snakeInTime) / 1000);
+  var m = Math.floor(totalSeconds / 60);
+  var s = totalSeconds % 60;
+  var durationText = (m > 0 ? m + 'm ' : '') + s + 's';
+
+  document.getElementById('iso-in-display').textContent = snakeInTime.toLocaleTimeString([], { hour12: false });
+  document.getElementById('iso-out-display').textContent = snakeOutTime.toLocaleTimeString([], { hour12: false });
+  document.getElementById('iso-duration-display').textContent = durationText;
+  document.getElementById('iso-time-summary').style.display = 'block';
+}
+
+function resetSnakeInOut() {
+  snakeInTime = null;
+  snakeOutTime = null;
+  document.getElementById('btn-snake-in').textContent = 'Snake In';
+  document.getElementById('btn-snake-in').disabled = false;
+  document.getElementById('btn-snake-out').textContent = 'Snake Out';
+  document.getElementById('btn-snake-out').disabled = true;
+  document.getElementById('iso-time-summary').style.display = 'none';
 }
 
 // ----- ID generators -----
