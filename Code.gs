@@ -75,7 +75,7 @@ var TRIAL_HEADERS = [
   'Boot_Thick_T','Boot_Thick_LM','Boot_Thick_I',
   'Snake_ID','Species_Code','Age_Class','Sex',
   'TL_mm','SVL_mm','HL_mm','HW_mm','BM_g',
-  'FL_L_mm','FL_R_mm','FBW_mm','Dentition',
+  'FL_L_mm','FL_R_mm','Dentition',
   'Outcome','Strikes','Region_Struck',
   'Temp_C','Humidity_pct','Photo_Links','Notes','Timestamp'
 ];
@@ -90,8 +90,8 @@ var BOOT_HEADERS = [
 var SNAKE_HEADERS = [
   'Snake_ID','Species_Code','Common_Name','Age_Class','Sex',
   'TL_mm','SVL_mm','HL_mm','HW_mm','BM_g',
-  'FL_L_mm','FL_R_mm','FBW_mm','Dentition',
-  'Body_Condition','Last_Feed_Date','Photo_Links','Registered_Date',
+  'FL_L_mm','FL_R_mm','Dentition',
+  'Body_Condition','Last_Feed_Date','Registered_Date',
   'Iso_In_Time','Iso_Out_Time','Time_To_Unconscious_Sec'
 ];
 
@@ -135,8 +135,8 @@ function getSnakes() {
     result.push({
       snakeId: r[0], speciesCode: r[1], commonName: r[2], ageClass: r[3],
       sex: r[4], tl: r[5], svl: r[6], hl: r[7], hw: r[8], bm: r[9],
-      flL: r[10], flR: r[11], fbw: r[12], dentition: r[13], bodyCondition: r[14],
-      isoInTime: r[18], isoOutTime: r[19], timeToUnconsciousSec: r[20]
+      flL: r[10], flR: r[11], dentition: r[12], bodyCondition: r[13],
+      isoInTime: r[15], isoOutTime: r[16], timeToUnconsciousSec: r[17]
     });
   }
   return result;
@@ -147,6 +147,10 @@ function formatDateStr_(val) {
     return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   return String(val || '');
+}
+
+function todayDateStr_() {
+  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
 function getAllTrials() {
@@ -163,9 +167,9 @@ function getAllTrials() {
       bootThickT: r[6], bootThickLM: r[7], bootThickI: r[8],
       snakeId: r[9], speciesCode: r[10], ageClass: r[11], sex: r[12],
       tl: r[13], svl: r[14], hl: r[15], hw: r[16], bm: r[17],
-      flL: r[18], flR: r[19], fbw: r[20], dentition: r[21],
-      outcome: r[22], strikes: r[23], regionStruck: r[24],
-      tempC: r[25], humidityPct: r[26], photoLinks: r[27], notes: r[28]
+      flL: r[18], flR: r[19], dentition: r[20],
+      outcome: r[21], strikes: r[22], regionStruck: r[23],
+      tempC: r[24], humidityPct: r[25], photoLinks: r[26], notes: r[27]
     });
   }
   return result;
@@ -223,7 +227,7 @@ function registerBoot(data) {
     data.bootId, data.brandAbbr, data.brandFull, data.model,
     data.size, data.session, data.isStandard, data.mfgDate, data.batch,
     data.thickT, data.thickLM, data.thickI,
-    photoLinks.join('\n'), new Date().toISOString()
+    photoLinks.join('\n'), todayDateStr_()
   ]);
 
   return { success: true, message: 'Boot registered: ' + data.bootId };
@@ -244,15 +248,13 @@ function registerSnake(data) {
     }
   }
 
-  var photoLinks = uploadPhotos_(data.photos, data.snakeId);
-
   sheet.appendRow([
     data.snakeId, data.speciesCode, SPECIES[data.speciesCode] || '',
     data.ageClass, data.sex,
     data.tl, data.svl, data.hl, data.hw, data.bm,
-    data.flL, data.flR, data.fbw, DENT[data.speciesCode] || '',
+    data.flL, data.flR, DENT[data.speciesCode] || '',
     data.bodyCondition, data.lastFeedDate,
-    photoLinks.join('\n'), new Date().toISOString(),
+    todayDateStr_(),
     data.isoInTime || '', data.isoOutTime || '', data.timeToUnconsciousSec || ''
   ]);
 
@@ -279,7 +281,7 @@ function submitTrial(data) {
     data.bootThickT, data.bootThickLM, data.bootThickI,
     data.snakeId, data.speciesCode, data.ageClass, data.sex,
     data.tl, data.svl, data.hl, data.hw, data.bm,
-    data.flL, data.flR, data.fbw, data.dentition,
+    data.flL, data.flR, data.dentition,
     data.outcome, data.strikes, data.regionStruck,
     data.tempC, data.humidityPct,
     photoLinks.join('\n'), data.notes,

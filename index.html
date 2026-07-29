@@ -1499,7 +1499,6 @@ async function submitTrialForm() {
     bm: selectedSnake ? selectedSnake.bm : '',
     flL: selectedSnake ? selectedSnake.flL : '',
     flR: selectedSnake ? selectedSnake.flR : '',
-    fbw: selectedSnake ? selectedSnake.fbw : '',
     dentition: selectedSnake ? selectedSnake.dentition : '',
     outcome: outcome,
     strikes: outcome === 'NP-R' ? 0 : parseInt(strikes) || 0,
@@ -1661,10 +1660,9 @@ async function submitSnakeForm() {
     flR: parseFloat(document.getElementById('s-flr').value) || '',
     bodyCondition: document.getElementById('s-condition').value,
     lastFeedDate: document.getElementById('s-lastfeed').value || '',
-    isoInTime: snakeInTime ? snakeInTime.toISOString() : '',
-    isoOutTime: snakeOutTime ? snakeOutTime.toISOString() : '',
-    timeToUnconsciousSec: (snakeInTime && snakeOutTime) ? Math.round((snakeOutTime - snakeInTime) / 1000) : '',
-    photos: []
+    isoInTime: snakeInTime ? formatSheetDateTime(snakeInTime) : '',
+    isoOutTime: snakeOutTime ? formatSheetDateTime(snakeOutTime) : '',
+    timeToUnconsciousSec: (snakeInTime && snakeOutTime) ? Math.round((snakeOutTime - snakeInTime) / 1000) : ''
   };
 
   apiPost('registerSnake', data)
@@ -1699,6 +1697,14 @@ function clearSnakeForm() {
 // ----- Isoflurane induction timing -----
 var snakeInTime = null;
 var snakeOutTime = null;
+
+// Plain "YYYY-MM-DD HH:mm:ss" in local time, so the Sheet shows a clean
+// readable string instead of a raw ISO timestamp (with T/Z/milliseconds).
+function formatSheetDateTime(d) {
+  function pad(n) { return String(n).padStart(2, '0'); }
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+         pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
 
 function markSnakeIn() {
   snakeInTime = new Date();
