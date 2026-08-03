@@ -1011,7 +1011,6 @@ var snakesCache = [];
 document.addEventListener('DOMContentLoaded', function() {
   history.replaceState({ page: 'home' }, '', '#home');
   history.pushState({ page: 'home' }, '', '#home');
-  document.getElementById('tile-boot-icon').src = document.querySelector('#splash .logo-wrap img').src;
   var today = new Date().toISOString().split('T')[0];
   document.getElementById('t-date').value = today;
   updateOnlineStatus();
