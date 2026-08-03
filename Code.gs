@@ -136,7 +136,7 @@ function getSnakes() {
       snakeId: r[0], speciesCode: r[1], commonName: r[2], ageClass: r[3],
       sex: r[4], tl: r[5], svl: r[6], hl: r[7], hw: r[8], bm: r[9],
       flL: r[10], flR: r[11], dentition: r[12], bodyCondition: r[13],
-      isoInTime: r[15], isoOutTime: r[16], timeToUnconsciousSec: r[17]
+      isoInTime: r[16], isoOutTime: r[17], timeToUnconsciousSec: r[18]
     });
   }
   return result;
@@ -248,6 +248,10 @@ function registerSnake(data) {
     }
   }
 
+  // A leading apostrophe forces Sheets to store these as plain text instead
+  // of auto-detecting "yyyy-MM-dd HH:mm:ss" as a real date/time and silently
+  // converting the cell — which would turn it back into a raw ISO string
+  // (with T/Z/milliseconds) the next time it's read back via the API.
   sheet.appendRow([
     data.snakeId, data.speciesCode, SPECIES[data.speciesCode] || '',
     data.ageClass, data.sex,
@@ -255,7 +259,9 @@ function registerSnake(data) {
     data.flL, data.flR, DENT[data.speciesCode] || '',
     data.bodyCondition, data.lastFeedDate,
     todayDateStr_(),
-    data.isoInTime || '', data.isoOutTime || '', data.timeToUnconsciousSec || ''
+    data.isoInTime ? "'" + data.isoInTime : '',
+    data.isoOutTime ? "'" + data.isoOutTime : '',
+    data.timeToUnconsciousSec || ''
   ]);
 
   return { success: true, message: 'Snake registered: ' + data.snakeId };
