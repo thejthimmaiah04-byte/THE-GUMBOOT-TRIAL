@@ -143,7 +143,10 @@ function getSnakes() {
 }
 
 function formatDateStr_(val) {
-  if (val instanceof Date) {
+  // Duck-type instead of `instanceof Date` — values read back from Sheets
+  // cells don't reliably pass instanceof checks, which was silently falling
+  // through to a raw String(date) like "Mon Aug 03 2026 00:00:00 GMT+0530...".
+  if (val && typeof val.getFullYear === 'function') {
     return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
   }
   return String(val || '');

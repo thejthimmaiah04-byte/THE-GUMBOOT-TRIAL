@@ -332,6 +332,17 @@
     .outcome-badge.NP-M { background: var(--amber); }
     .outcome-badge.NP-R { background: var(--text-light); }
     .outcome-badge.INC { background: #999; }
+
+    /* --- All Trials Summary --- */
+    #trial-summary-card summary::after {
+      content: '\25BE'; margin-left: auto; color: var(--text-light); font-size: 12px;
+    }
+    #trial-summary-card[open] summary::after { content: '\25B4'; }
+    #trial-summary-card summary::-webkit-details-marker { display: none; }
+    .trial-summary-stats-row {
+      font-size: 12.5px; color: var(--text-mid); display: flex; flex-wrap: wrap;
+      align-items: center; gap: 6px;
+    }
     .trial-log-item .tl-sub { font-size: 11.5px; color: var(--text-mid); margin-top: 3px; }
     .trial-detail {
       margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);
@@ -600,6 +611,13 @@
     <div class="cal-grid" id="cal-grid"></div>
     <div id="trial-log-results"></div>
   </div>
+
+  <!-- All Trials Summary -->
+  <details class="card" id="trial-summary-card">
+    <summary class="card-title" style="cursor:pointer; list-style:none;">All Trials Summary</summary>
+    <div id="trial-summary-stats" style="margin:10px 0;"></div>
+    <div id="trial-summary-list" style="max-height:360px; overflow-y:auto;"></div>
+  </details>
 
   <div class="card-title" style="margin:0 4px 10px; padding-bottom:0; border-bottom:none; font-size:15px;">+ Add New Trial</div>
 
@@ -1135,6 +1153,7 @@ function loadTrialLog() {
       trialsByDate[t.date].push(t);
     });
     renderCalendar();
+    renderTrialSummary();
   }).catch(function(e) {
     console.error('Failed to load trial log:', e);
   });
@@ -1205,6 +1224,35 @@ function selectCalDate(dateStr) {
   renderTrialLogResults();
 }
 
+function buildTrialDetailHtml_(t) {
+  var html = '';
+  html += 'Snake: <span>' + t.snakeId + '</span> &middot; Sex: <span>' + (t.sex || '-') + '</span><br>';
+  html += 'TL: <span>' + (t.tl || '-') + '</span> mm &middot; SVL: <span>' + (t.svl || '-') + '</span> mm &middot; BM: <span>' + (t.bm || '-') + '</span> g<br>';
+  html += 'Fang L/R: <span>' + (t.flL || '-') + ' / ' + (t.flR || '-') + '</span> mm &middot; Dentition: <span>' + (t.dentition || '-') + '</span><br>';
+  html += 'Boot: <span>' + t.bootId + '</span> &middot; Thickness T/LM/I: <span>' + (t.bootThickT || '-') + ' / ' + (t.bootThickLM || '-') + ' / ' + (t.bootThickI || '-') + '</span> mm<br>';
+  html += 'Temp: <span>' + (t.tempC || '-') + '&deg;C</span> &middot; Humidity: <span>' + (t.humidityPct || '-') + '%</span><br>';
+  if (t.notes) html += 'Notes: ' + t.notes + '<br>';
+  if (t.photoLinks) {
+    String(t.photoLinks).split('\n').forEach(function(line) {
+      var parts = line.split(': ');
+      if (parts.length === 2 && parts[1].indexOf('http') === 0) {
+        html += '<a href="' + parts[1] + '" target="_blank">' + parts[0] + ' photo</a><br>';
+      }
+    });
+  }
+  return html;
+}
+
+function buildTrialLogItemHtml_(t, detailId, toggleExpr, showDate) {
+  var badgeClass = (t.outcome || '').replace(/[^A-Z-]/g, '');
+  var html = '<div class="trial-log-item" onclick="' + toggleExpr + '">';
+  html += '<div class="tl-top"><span>' + t.trialId + '</span><span class="outcome-badge ' + badgeClass + '">' + t.outcome + '</span></div>';
+  html += '<div class="tl-sub">' + (showDate ? (t.date || '') + ' &middot; ' : '') +
+    (t.speciesCode || '') + ' ' + (t.ageClass || '') + ' vs ' + (t.bootBrand || '') + ' (Size ' + (t.bootSize || '') + ') &middot; Strikes: ' + t.strikes + ' &middot; Region: ' + (t.regionStruck || '-') + '</div>';
+  html += '<div class="trial-detail" id="' + detailId + '">' + buildTrialDetailHtml_(t) + '</div></div>';
+  return html;
+}
+
 function renderTrialLogResults() {
   var container = document.getElementById('trial-log-results');
   if (!calSelectedDate) { container.innerHTML = ''; return; }
@@ -1217,34 +1265,55 @@ function renderTrialLogResults() {
 
   var html = '<div class="trial-log-list">';
   trials.forEach(function(t, idx) {
-    var badgeClass = (t.outcome || '').replace(/[^A-Z-]/g, '');
-    html += '<div class="trial-log-item" onclick="toggleTrialDetail(' + idx + ')">';
-    html += '<div class="tl-top"><span>' + t.trialId + '</span><span class="outcome-badge ' + badgeClass + '">' + t.outcome + '</span></div>';
-    html += '<div class="tl-sub">' + (t.speciesCode || '') + ' ' + (t.ageClass || '') + ' vs ' + (t.bootBrand || '') + ' (Size ' + (t.bootSize || '') + ') &middot; Strikes: ' + t.strikes + ' &middot; Region: ' + (t.regionStruck || '-') + '</div>';
-    html += '<div class="trial-detail" id="trial-detail-' + idx + '">';
-    html += 'Snake: <span>' + t.snakeId + '</span> &middot; Sex: <span>' + (t.sex || '-') + '</span><br>';
-    html += 'TL: <span>' + (t.tl || '-') + '</span> cm &middot; SVL: <span>' + (t.svl || '-') + '</span> cm &middot; BM: <span>' + (t.bm || '-') + '</span> g<br>';
-    html += 'Fang L/R: <span>' + (t.flL || '-') + ' / ' + (t.flR || '-') + '</span> mm &middot; Dentition: <span>' + (t.dentition || '-') + '</span><br>';
-    html += 'Boot: <span>' + t.bootId + '</span> &middot; Thickness T/LM/I: <span>' + (t.bootThickT || '-') + ' / ' + (t.bootThickLM || '-') + ' / ' + (t.bootThickI || '-') + '</span> mm<br>';
-    html += 'Temp: <span>' + (t.tempC || '-') + '&deg;C</span> &middot; Humidity: <span>' + (t.humidityPct || '-') + '%</span><br>';
-    if (t.notes) html += 'Notes: ' + t.notes + '<br>';
-    if (t.photoLinks) {
-      String(t.photoLinks).split('\n').forEach(function(line) {
-        var parts = line.split(': ');
-        if (parts.length === 2 && parts[1].indexOf('http') === 0) {
-          html += '<a href="' + parts[1] + '" target="_blank">' + parts[0] + ' photo</a><br>';
-        }
-      });
-    }
-    html += '</div></div>';
+    html += buildTrialLogItemHtml_(t, 'trial-detail-' + idx, 'toggleDetail(\'trial-detail-' + idx + '\')', false);
   });
   html += '</div>';
   container.innerHTML = html;
 }
 
-function toggleTrialDetail(idx) {
-  var el = document.getElementById('trial-detail-' + idx);
+function toggleDetail(id) {
+  var el = document.getElementById(id);
   if (el) el.classList.toggle('open');
+}
+
+// ----- All Trials Summary -----
+var OUTCOME_ORDER = ['P', 'NP', 'NP-M', 'NP-R', 'INC'];
+
+function renderTrialSummary() {
+  var statsEl = document.getElementById('trial-summary-stats');
+  var listEl = document.getElementById('trial-summary-list');
+  if (!statsEl || !listEl) return;
+
+  var total = allTrialsCache.length;
+  if (total === 0) {
+    statsEl.innerHTML = '';
+    listEl.innerHTML = '<div class="empty-state">No trials recorded yet</div>';
+    return;
+  }
+
+  var counts = {};
+  allTrialsCache.forEach(function(t) {
+    var o = t.outcome || 'INC';
+    counts[o] = (counts[o] || 0) + 1;
+  });
+  var statsHtml = '<div class="trial-summary-stats-row"><b>' + total + '</b> total trial' + (total === 1 ? '' : 's');
+  OUTCOME_ORDER.forEach(function(o) {
+    if (counts[o]) {
+      statsHtml += ' <span class="outcome-badge ' + o + '">' + o + ' &middot; ' + counts[o] + '</span>';
+    }
+  });
+  statsHtml += '</div>';
+  statsEl.innerHTML = statsHtml;
+
+  var sorted = allTrialsCache.slice().sort(function(a, b) {
+    return (b.date || '').localeCompare(a.date || '') || (b.trialId || '').localeCompare(a.trialId || '');
+  });
+  var html = '<div class="trial-log-list">';
+  sorted.forEach(function(t, idx) {
+    html += buildTrialLogItemHtml_(t, 'trial-summary-detail-' + idx, 'toggleDetail(\'trial-summary-detail-' + idx + '\')', true);
+  });
+  html += '</div>';
+  listEl.innerHTML = html;
 }
 
 // ----- Load registries -----
