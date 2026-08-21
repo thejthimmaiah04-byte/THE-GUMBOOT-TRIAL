@@ -26,7 +26,7 @@ function doGet(e) {
     else if (action === 'getAllTrials') result = getAllTrials();
     else result = { error: 'Unknown action: ' + action };
   } catch (err) {
-    result = { error: err.message };
+    result = { error: friendlyError_(err) };
   }
   if (callback) {
     return ContentService.createTextOutput(callback + '(' + JSON.stringify(result) + ')')
@@ -54,9 +54,23 @@ function doPost(e) {
     else if (action === 'submitTrial') result = submitTrial(data);
     else result = { success: false, message: 'Unknown action: ' + action };
   } catch (err) {
-    result = { success: false, message: err.message };
+    result = { success: false, message: friendlyError_(err) };
   }
   return postMessageResponse_(reqId, result);
+}
+
+// Apps Script's own error text for lock timeouts / quota limits is cryptic
+// ("Exception: Lock timeout...", raw quota errors). Translate the ones a
+// field researcher might actually hit into something actionable.
+function friendlyError_(err) {
+  var msg = (err && err.message) || String(err);
+  if (/lock/i.test(msg)) {
+    return 'Server was busy handling another submission — please try again in a few seconds.';
+  }
+  if (/quota|limit/i.test(msg)) {
+    return 'Google service limit reached — please wait a minute and try again.';
+  }
+  return msg;
 }
 
 function postMessageResponse_(reqId, result) {
@@ -78,14 +92,14 @@ var TRIAL_HEADERS = [
   'FL_L_mm','FL_R_mm','Dentition',
   'Outcome','Strikes','Region_Struck',
   'Temp_C','Humidity_pct','Photo_Links','Notes','Timestamp',
-  'Trial_Start_Time','Trial_Stop_Time','Trial_Duration_Sec'
+  'Trial_Start_Time','Trial_Stop_Time','Trial_Duration_Sec','Recorded_By'
 ];
 
 var BOOT_HEADERS = [
   'Boot_ID','Brand_Abbr','Brand_Full','Model','Boot_Size','Session',
   'IS_Standard','Mfg_Date','Batch_No',
   'Thick_T_mm','Thick_LM_mm','Thick_I_mm',
-  'Photo_Links','Registered_Date'
+  'Photo_Links','Registered_Date','Recorded_By'
 ];
 
 var SNAKE_HEADERS = [
@@ -93,8 +107,35 @@ var SNAKE_HEADERS = [
   'TL_mm','SVL_mm','HL_mm','HW_mm','BM_g',
   'FL_L_mm','FL_R_mm','Dentition',
   'Body_Condition','Last_Feed_Date','Registered_Date',
-  'Iso_In_Time','Iso_Out_Time','Time_To_Unconscious_Sec'
+  'Iso_In_Time','Iso_Out_Time','Time_To_Unconscious_Sec','Recorded_By'
 ];
+
+// Single source of truth for species metadata — used to build both the name
+// lookup and the dentition lookup, so there's only one place to edit when a
+// species is added. NOTE: the <select id="s-species"> options in index.html
+// must be kept in sync with these codes by hand (a static HTML page can't
+// import this file directly) — if you add a species here, add the matching
+// <option> there too.
+var SPECIES_DEFS = [
+  { code: 'DR', name: "Russell's viper", dentition: 'S' },
+  { code: 'NN', name: 'Spectacled cobra', dentition: 'P' },
+  { code: 'BC', name: 'Common krait', dentition: 'P' },
+  { code: 'EC', name: 'Saw-scaled viper', dentition: 'S' }
+];
+
+function speciesName_(code) {
+  for (var i = 0; i < SPECIES_DEFS.length; i++) {
+    if (SPECIES_DEFS[i].code === code) return SPECIES_DEFS[i].name;
+  }
+  return '';
+}
+
+function speciesDentition_(code) {
+  for (var i = 0; i < SPECIES_DEFS.length; i++) {
+    if (SPECIES_DEFS[i].code === code) return SPECIES_DEFS[i].dentition;
+  }
+  return '';
+}
 
 function getOrCreateSheet_(name, headers) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -106,6 +147,26 @@ function getOrCreateSheet_(name, headers) {
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+// Google Sheets treats a leading =, +, -, or @ as the start of a formula.
+// Free-text fields (notes, brand names, batch numbers...) come straight from
+// user input, so a value like "-5 boots left" would otherwise silently turn
+// into a broken formula. A leading apostrophe forces plain text.
+function sanitizeCell_(val) {
+  if (typeof val === 'string' && /^[=+\-@]/.test(val)) {
+    return "'" + val;
+  }
+  return val;
+}
+
+function missingFields_(data, required) {
+  var missing = [];
+  required.forEach(function(f) {
+    var v = data[f.key];
+    if (v === undefined || v === null || String(v).trim() === '') missing.push(f.label);
+  });
+  return missing;
 }
 
 // ---------- Data retrieval ----------
@@ -174,7 +235,8 @@ function getAllTrials() {
       flL: r[18], flR: r[19], dentition: r[20],
       outcome: r[21], strikes: r[22], regionStruck: r[23],
       tempC: r[24], humidityPct: r[25], photoLinks: r[26], notes: r[27],
-      trialStartTime: r[29], trialStopTime: r[30], trialDurationSec: r[31]
+      trialStartTime: r[29], trialStopTime: r[30], trialDurationSec: r[31],
+      recordedBy: r[32]
     });
   }
   return result;
@@ -216,94 +278,173 @@ function uploadPhotos_(photos, idPrefix) {
 }
 
 // ---------- Registration ----------
+// Each of these wraps its duplicate-ID check + append in a script lock.
+// Without this, two near-simultaneous submissions (two researchers, or a
+// double-tap) can both read "not a duplicate" before either has written its
+// row, producing two rows with the same ID. The lock makes check-then-append
+// atomic across concurrent requests. Everything after the lock is acquired
+// runs exactly as it did before — this only serializes access, it doesn't
+// change what a single request does.
 
 function registerBoot(data) {
-  var sheet = getOrCreateSheet_('Boots', BOOT_HEADERS);
-  var existing = sheet.getDataRange().getValues();
-  for (var i = 1; i < existing.length; i++) {
-    if (existing[i][0] === data.bootId) {
-      return { success: false, message: 'Boot ID already exists: ' + data.bootId };
-    }
+  var missing = missingFields_(data, [
+    { key: 'bootId', label: 'Boot ID' },
+    { key: 'brandAbbr', label: 'Brand Abbr' },
+    { key: 'brandFull', label: 'Brand Name' },
+    { key: 'size', label: 'Size' }
+  ]);
+  if (missing.length) {
+    return { success: false, message: 'Missing: ' + missing.join(', ') };
   }
 
-  var photoLinks = uploadPhotos_(data.photos, data.bootId);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: 'Server busy — please try again in a moment.' };
+  }
+  try {
+    var sheet = getOrCreateSheet_('Boots', BOOT_HEADERS);
+    var existing = sheet.getDataRange().getValues();
+    for (var i = 1; i < existing.length; i++) {
+      if (existing[i][0] === data.bootId) {
+        return { success: false, message: 'Boot ID already exists: ' + data.bootId };
+      }
+    }
 
-  sheet.appendRow([
-    data.bootId, data.brandAbbr, data.brandFull, data.model,
-    data.size, data.session, data.isStandard, data.mfgDate, data.batch,
-    data.thickT, data.thickLM, data.thickI,
-    photoLinks.join('\n'), todayDateStr_()
-  ]);
+    var photoLinks = uploadPhotos_(data.photos, data.bootId);
 
-  return { success: true, message: 'Boot registered: ' + data.bootId };
+    sheet.appendRow([
+      data.bootId, data.brandAbbr, sanitizeCell_(data.brandFull), sanitizeCell_(data.model),
+      data.size, data.session, sanitizeCell_(data.isStandard), sanitizeCell_(data.mfgDate), sanitizeCell_(data.batch),
+      data.thickT, data.thickLM, data.thickI,
+      photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy)
+    ]);
+
+    return { success: true, message: 'Boot registered: ' + data.bootId };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function registerSnake(data) {
-  var SPECIES = {
-    DR: "Russell's viper", NN: 'Spectacled cobra',
-    BC: 'Common krait', EC: 'Saw-scaled viper'
-  };
-  var DENT = { DR: 'S', NN: 'P', BC: 'P', EC: 'S' };
-
-  var sheet = getOrCreateSheet_('Snakes', SNAKE_HEADERS);
-  var existing = sheet.getDataRange().getValues();
-  for (var i = 1; i < existing.length; i++) {
-    if (existing[i][0] === data.snakeId) {
-      return { success: false, message: 'Snake ID already exists: ' + data.snakeId };
-    }
+  var missing = missingFields_(data, [
+    { key: 'snakeId', label: 'Snake ID' },
+    { key: 'speciesCode', label: 'Species' },
+    { key: 'ageClass', label: 'Age Class' }
+  ]);
+  if (missing.length) {
+    return { success: false, message: 'Missing: ' + missing.join(', ') };
   }
 
-  // A leading apostrophe forces Sheets to store these as plain text instead
-  // of auto-detecting "yyyy-MM-dd HH:mm:ss" as a real date/time and silently
-  // converting the cell — which would turn it back into a raw ISO string
-  // (with T/Z/milliseconds) the next time it's read back via the API.
-  sheet.appendRow([
-    data.snakeId, data.speciesCode, SPECIES[data.speciesCode] || '',
-    data.ageClass, data.sex,
-    data.tl, data.svl, data.hl, data.hw, data.bm,
-    data.flL, data.flR, DENT[data.speciesCode] || '',
-    data.bodyCondition, data.lastFeedDate,
-    todayDateStr_(),
-    data.isoInTime ? "'" + data.isoInTime : '',
-    data.isoOutTime ? "'" + data.isoOutTime : '',
-    data.timeToUnconsciousSec || ''
-  ]);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: 'Server busy — please try again in a moment.' };
+  }
+  try {
+    var sheet = getOrCreateSheet_('Snakes', SNAKE_HEADERS);
+    var existing = sheet.getDataRange().getValues();
+    for (var i = 1; i < existing.length; i++) {
+      if (existing[i][0] === data.snakeId) {
+        return { success: false, message: 'Snake ID already exists: ' + data.snakeId };
+      }
+    }
 
-  return { success: true, message: 'Snake registered: ' + data.snakeId };
+    // A leading apostrophe forces Sheets to store these as plain text instead
+    // of auto-detecting "yyyy-MM-dd HH:mm:ss" as a real date/time and silently
+    // converting the cell — which would turn it back into a raw ISO string
+    // (with T/Z/milliseconds) the next time it's read back via the API.
+    sheet.appendRow([
+      data.snakeId, data.speciesCode, speciesName_(data.speciesCode),
+      data.ageClass, data.sex,
+      data.tl, data.svl, data.hl, data.hw, data.bm,
+      data.flL, data.flR, speciesDentition_(data.speciesCode),
+      data.bodyCondition, sanitizeCell_(data.lastFeedDate),
+      todayDateStr_(),
+      data.isoInTime ? "'" + data.isoInTime : '',
+      data.isoOutTime ? "'" + data.isoOutTime : '',
+      data.timeToUnconsciousSec || '',
+      sanitizeCell_(data.recordedBy)
+    ]);
+
+    return { success: true, message: 'Snake registered: ' + data.snakeId };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ---------- Trial submission ----------
 
 function submitTrial(data) {
-  var sheet = getOrCreateSheet_('Trials', TRIAL_HEADERS);
-
-  var existing = sheet.getDataRange().getValues();
-  for (var i = 1; i < existing.length; i++) {
-    if (existing[i][0] === data.trialId) {
-      return { success: false, message: 'Trial already recorded: ' + data.trialId + '. Use a unique combination.' };
-    }
+  var missing = missingFields_(data, [
+    { key: 'trialId', label: 'Trial ID' },
+    { key: 'date', label: 'Date' },
+    { key: 'bootId', label: 'Boot' },
+    { key: 'snakeId', label: 'Snake' },
+    { key: 'outcome', label: 'Outcome' }
+  ]);
+  if (missing.length) {
+    return { success: false, message: 'Missing: ' + missing.join(', ') };
   }
 
-  var photoLinks = uploadPhotos_(data.photos, data.trialId);
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: 'Server busy — please try again in a moment.' };
+  }
+  try {
+    var sheet = getOrCreateSheet_('Trials', TRIAL_HEADERS);
+    var existing = sheet.getDataRange().getValues();
+    for (var i = 1; i < existing.length; i++) {
+      if (existing[i][0] === data.trialId) {
+        return { success: false, message: 'Trial already recorded: ' + data.trialId + '. Use a unique combination.' };
+      }
+    }
 
-  // Leading apostrophe forces plain text so Sheets doesn't auto-detect
-  // "HH:MM:SS" as a real time value and corrupt it on the next read-back
-  // (same issue fixed earlier for the isoflurane in/out timestamps).
-  sheet.appendRow([
-    data.trialId, data.date, data.session,
-    data.bootId, data.bootBrand, data.bootSize,
-    data.bootThickT, data.bootThickLM, data.bootThickI,
-    data.snakeId, data.speciesCode, data.ageClass, data.sex,
-    data.tl, data.svl, data.hl, data.hw, data.bm,
-    data.flL, data.flR, data.dentition,
-    data.outcome, data.strikes, data.regionStruck,
-    data.tempC, data.humidityPct,
-    photoLinks.join('\n'), data.notes,
-    new Date().toISOString(),
-    data.trialStartTime ? "'" + data.trialStartTime : '',
-    data.trialStopTime ? "'" + data.trialStopTime : '',
-    data.trialDurationSec || ''
-  ]);
+    var photoLinks = uploadPhotos_(data.photos, data.trialId);
 
-  return { success: true, message: 'Trial recorded: ' + data.trialId };
+    // Leading apostrophe forces plain text so Sheets doesn't auto-detect
+    // "HH:MM:SS" as a real time value and corrupt it on the next read-back
+    // (same issue fixed earlier for the isoflurane in/out timestamps).
+    sheet.appendRow([
+      data.trialId, data.date, data.session,
+      data.bootId, sanitizeCell_(data.bootBrand), data.bootSize,
+      data.bootThickT, data.bootThickLM, data.bootThickI,
+      data.snakeId, data.speciesCode, data.ageClass, data.sex,
+      data.tl, data.svl, data.hl, data.hw, data.bm,
+      data.flL, data.flR, data.dentition,
+      data.outcome, data.strikes, data.regionStruck,
+      data.tempC, data.humidityPct,
+      photoLinks.join('\n'), sanitizeCell_(data.notes),
+      new Date().toISOString(),
+      data.trialStartTime ? "'" + data.trialStartTime : '',
+      data.trialStopTime ? "'" + data.trialStopTime : '',
+      data.trialDurationSec || '',
+      sanitizeCell_(data.recordedBy)
+    ]);
+
+    return { success: true, message: 'Trial recorded: ' + data.trialId };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------- Backup (optional, opt-in) ----------
+// Run installDailyBackupTrigger() ONCE from the Apps Script editor (select
+// it in the function dropdown, click Run) to schedule an automatic daily
+// snapshot. It copies the whole spreadsheet into a "TLT_Gumboot_Backups"
+// Drive folder with a dated filename — a safety net beyond Sheets' own
+// version history. Safe to skip; nothing else depends on it.
+
+function installDailyBackupTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'dailyBackupSnapshot') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('dailyBackupSnapshot').timeBased().everyDays(1).atHour(2).create();
+}
+
+function dailyBackupSnapshot() {
+  var folders = DriveApp.getFoldersByName('TLT_Gumboot_Backups');
+  var folder = folders.hasNext() ? folders.next() : DriveApp.createFolder('TLT_Gumboot_Backups');
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var file = DriveApp.getFileById(ss.getId());
+  var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  file.makeCopy(ss.getName() + ' — backup ' + dateStr, folder);
 }

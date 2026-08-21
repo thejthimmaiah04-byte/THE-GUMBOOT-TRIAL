@@ -123,6 +123,7 @@
     }
     .id-badge.pending { background: var(--text-light); }
     .id-badge.duplicate { background: var(--danger); }
+    .id-badge.repeat { background: var(--amber); }
     .id-badge .id-warn {
       font-family: -apple-system, sans-serif;
       font-size: 11px; font-weight: 700; margin-top: 4px;
@@ -259,6 +260,19 @@
     }
     .home-btn svg { width: 20px; height: 20px; }
     header .header-right { display: flex; align-items: center; gap: 10px; }
+    .recorder-btn {
+      background: none; border: none; color: #fff; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; opacity: 0.9; flex-shrink: 0; position: relative;
+    }
+    .recorder-btn svg { width: 19px; height: 19px; }
+    .recorder-btn.unset svg { opacity: 0.5; }
+    .pending-badge {
+      position: absolute; top: -2px; right: -2px;
+      background: var(--amber); color: #fff; font-size: 9px; font-weight: 700;
+      min-width: 14px; height: 14px; border-radius: 7px; padding: 0 3px;
+      display: flex; align-items: center; justify-content: center; line-height: 1;
+    }
 
     /* --- Checklist --- */
     .checklist-section { margin-bottom: 14px; }
@@ -461,6 +475,10 @@
     <div class="sub" id="header-sub">Home</div>
   </div>
   <div class="header-right">
+    <button class="recorder-btn" id="recorder-btn" onclick="promptRecorderName()" title="Set recorder name">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="pending-badge" id="pending-badge" style="display:none">0</span>
+    </button>
     <button class="home-btn" onclick="switchPage('home')" title="Home">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
     </button>
@@ -632,7 +650,7 @@
   <div class="id-badge pending" id="trial-id-badge">
     <div class="id-label">Trial ID</div>
     <div id="trial-id-text">Select boot &amp; snake below</div>
-    <div class="id-warn" id="trial-id-warn" style="display:none">Already recorded &mdash; check date/boot/snake</div>
+    <div class="id-warn" id="trial-id-warn" style="display:none">Repeat trial for this Snake + Boot + Date &mdash; will save as a separate entry</div>
   </div>
 
   <!-- Session details -->
@@ -776,8 +794,8 @@
     <input type="text" id="b-model" placeholder="e.g. Safety Gumboot Pro">
     <label>IS/BIS Certification</label>
     <div class="row">
-      <button type="button" class="btn-toggle" id="btn-certified-yes" onclick="setCertified(true)">Certified</button>
-      <button type="button" class="btn-toggle active" id="btn-certified-no" onclick="setCertified(false)">Not Certified</button>
+      <button type="button" class="btn-toggle" id="btn-certified-yes" onclick="setCertified(true); formDirty.boot = true;">Certified</button>
+      <button type="button" class="btn-toggle active" id="btn-certified-no" onclick="setCertified(false); formDirty.boot = true;">Not Certified</button>
     </div>
     <div id="b-is-number-wrap" style="display:none">
       <label for="b-is">IS/BIS Number</label>
@@ -1041,6 +1059,136 @@ function apiPost(action, data) {
 var bootsCache = [];
 var snakesCache = [];
 
+// ----- Recorder name (who is entering this data) -----
+var RECORDER_KEY = 'tlt_recorder_name';
+
+function getRecorderName() {
+  return localStorage.getItem(RECORDER_KEY) || '';
+}
+
+function promptRecorderName() {
+  var current = getRecorderName();
+  var name = prompt('Your name (saved with each entry you record):', current);
+  if (name !== null) {
+    localStorage.setItem(RECORDER_KEY, name.trim());
+    updateRecorderDisplay();
+  }
+}
+
+function updateRecorderDisplay() {
+  var btn = document.getElementById('recorder-btn');
+  if (!btn) return;
+  var name = getRecorderName();
+  btn.title = name ? ('Recorder: ' + name + ' (tap to change)') : 'Set recorder name';
+  btn.classList.toggle('unset', !name);
+}
+
+// ----- Range sanity checks -----
+// Soft warning only — never blocks a submission outright, since real
+// measurements can legitimately fall outside "typical" ranges. Just gives
+// the researcher a chance to catch an obvious typo (extra/missing digit)
+// before it goes into the dataset.
+function checkRange(label, value, min, max) {
+  if (value === '' || value === null || value === undefined) return true;
+  var n = parseFloat(value);
+  if (isNaN(n)) return true;
+  if (n < min || n > max) {
+    return confirm(label + ' = ' + n + ' looks unusual (expected ' + min + '–' + max + '). Save anyway?');
+  }
+  return true;
+}
+
+// ----- Unsaved-changes protection -----
+// Losing a half-filled Boot/Snake/Trial form to an accidental back-press or
+// tab close would mean re-doing real field measurements, so any of the
+// three data-entry pages that has been touched since its last successful
+// submit/clear is treated as "dirty" and confirmed before leaving.
+var FORM_PAGES = ['boot', 'snake', 'trial'];
+var formDirty = { boot: false, snake: false, trial: false };
+
+function setupDirtyTracking() {
+  FORM_PAGES.forEach(function(page) {
+    var el = document.getElementById('page-' + page);
+    el.addEventListener('input', function() { formDirty[page] = true; });
+    el.addEventListener('change', function() { formDirty[page] = true; });
+  });
+}
+
+function confirmLeavePage(pageName) {
+  if (!pageName || FORM_PAGES.indexOf(pageName) === -1 || !formDirty[pageName]) return true;
+  return confirm('You have unsaved changes on this page. Leave without saving?');
+}
+
+window.addEventListener('beforeunload', function(e) {
+  var current = document.querySelector('.page.active');
+  var currentName = current ? current.id.replace('page-', '') : null;
+  if (currentName && FORM_PAGES.indexOf(currentName) !== -1 && formDirty[currentName]) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// ----- Offline queue (auto-retry failed submissions) -----
+// A failed submit (patchy field signal) used to just show an error toast and
+// leave the researcher to notice and manually retry. Now it's saved locally
+// and retried automatically once back online, so a dead zone at the trial
+// site can't quietly cost real data.
+var PENDING_KEY = 'tlt_pending_submissions';
+
+function getPendingQueue() {
+  try { return JSON.parse(localStorage.getItem(PENDING_KEY) || '[]'); } catch (e) { return []; }
+}
+
+function setPendingQueue(q) {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(q));
+    updatePendingBadge();
+    return true;
+  } catch (e) {
+    console.error('Could not save pending queue (storage full?):', e);
+    return false;
+  }
+}
+
+function queueSubmission(action, data) {
+  var q = getPendingQueue();
+  q.push({ action: action, data: data, ts: Date.now() });
+  return setPendingQueue(q);
+}
+
+function updatePendingBadge() {
+  var el = document.getElementById('pending-badge');
+  if (!el) return;
+  var n = getPendingQueue().length;
+  el.style.display = n > 0 ? 'flex' : 'none';
+  el.textContent = n;
+}
+
+var flushingQueue = false;
+function flushPendingQueue() {
+  if (flushingQueue || !navigator.onLine) return;
+  var q = getPendingQueue();
+  if (q.length === 0) return;
+  flushingQueue = true;
+  var item = q[0];
+  apiPost(item.action, item.data)
+    .then(function(result) {
+      var q2 = getPendingQueue();
+      q2.shift();
+      setPendingQueue(q2);
+      flushingQueue = false;
+      if (result.success) {
+        showToast('Synced: ' + result.message, 'success');
+        loadRegistries();
+        loadTrialLog();
+      }
+      flushPendingQueue();
+    })
+    .catch(function() {
+      flushingQueue = false; // leave it queued, next trigger will retry
+    });
+}
+
 // ----- Init -----
 document.addEventListener('DOMContentLoaded', function() {
   history.replaceState({ page: 'home' }, '', '#home');
@@ -1050,9 +1198,15 @@ document.addEventListener('DOMContentLoaded', function() {
   updateOnlineStatus();
   window.addEventListener('online', updateOnlineStatus);
   window.addEventListener('offline', updateOnlineStatus);
+  window.addEventListener('online', flushPendingQueue);
+  setInterval(flushPendingQueue, 30000);
+  updateRecorderDisplay();
+  updatePendingBadge();
+  setupDirtyTracking();
   loadRegistries();
   initChecklist();
   loadTrialLog();
+  flushPendingQueue();
   setTimeout(dismissSplash, 2600);
 });
 
@@ -1094,18 +1248,31 @@ function switchPage(name) {
   var current = document.querySelector('.page.active');
   var currentName = current ? current.id.replace('page-', '') : null;
   if (name === currentName) return;
+  if (!confirmLeavePage(currentName)) return;
+  formDirty[currentName] = false;
   renderPage(name);
   history.pushState({ page: name }, '', '#' + name);
 }
 
 window.addEventListener('popstate', function(e) {
+  var current = document.querySelector('.page.active');
+  var currentName = current ? current.id.replace('page-', '') : null;
   var wasHome = !!document.getElementById('page-home').classList.contains('active');
   var name = (e.state && e.state.page) || 'home';
+
   if (name === 'home' && wasHome) {
     // Already on Home, user pressed back again — warn instead of exiting silently.
     showToast('Press back again to exit', 'warn');
     return;
   }
+
+  if (name !== currentName && !confirmLeavePage(currentName)) {
+    // Undo the back navigation by re-pushing the page we were just on.
+    history.pushState({ page: currentName }, '', '#' + currentName);
+    return;
+  }
+  if (currentName) formDirty[currentName] = false;
+
   renderPage(name);
 });
 
@@ -1417,29 +1584,45 @@ function onSnakeSelect() {
   updateTrialId();
 }
 
+// Snake+Boot+Date can legitimately repeat (re-trial after an inconclusive
+// result, protocol requires replicates, etc.) — so instead of blocking a
+// repeat outright, auto-suffix it (-2, -3, ...) into a unique ID and just
+// flag it as a repeat for awareness. True accidental double-submits are
+// still caught: the second submit would need the exact same suffixed ID,
+// which only happens if this same code path already offered it.
+function computeTrialId(snakeId, bootId, dateStr) {
+  var base = snakeId + '_' + bootId + '_' + dateStr;
+  if (!allTrialsCache.some(function(t) { return t.trialId === base; })) {
+    return { id: base, isRepeat: false };
+  }
+  var n = 2;
+  var candidate;
+  do {
+    candidate = base + '-' + n;
+    n++;
+  } while (allTrialsCache.some(function(t) { return t.trialId === candidate; }));
+  return { id: candidate, isRepeat: true };
+}
+
 function updateTrialId() {
   var badge = document.getElementById('trial-id-badge');
   var text = document.getElementById('trial-id-text');
   var warn = document.getElementById('trial-id-warn');
-  var submitBtn = document.getElementById('btn-submit-trial');
   var snakeId = document.getElementById('t-snake').value;
   var bootId = document.getElementById('t-boot').value;
   var date = document.getElementById('t-date').value;
   if (snakeId && bootId && date) {
     var dateStr = date.replace(/-/g, '');
-    var trialId = snakeId + '_' + bootId + '_' + dateStr;
-    text.textContent = trialId;
+    var result = computeTrialId(snakeId, bootId, dateStr);
+    text.textContent = result.id;
     badge.classList.remove('pending');
-    var isDup = allTrialsCache.some(function(t) { return t.trialId === trialId; });
-    badge.classList.toggle('duplicate', isDup);
-    warn.style.display = isDup ? 'block' : 'none';
-    if (submitBtn) submitBtn.disabled = isDup;
+    badge.classList.toggle('repeat', result.isRepeat);
+    warn.style.display = result.isRepeat ? 'block' : 'none';
   } else {
     text.textContent = 'Select boot & snake above';
     badge.classList.add('pending');
-    badge.classList.remove('duplicate');
+    badge.classList.remove('repeat');
     warn.style.display = 'none';
-    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
@@ -1554,7 +1737,18 @@ async function submitTrialForm() {
   });
 
   var dateStr = date.replace(/-/g, '');
-  var trialId = snakeId + '_' + bootId + '_' + dateStr;
+  var trialResult = computeTrialId(snakeId, bootId, dateStr);
+  var trialId = trialResult.id;
+
+  var tempC = document.getElementById('t-temp').value || '';
+  var humidityPct = document.getElementById('t-hum').value || '';
+  if (!checkRange('Temp', tempC, 0, 50)) return;
+  if (!checkRange('Humidity', humidityPct, 0, 100)) return;
+  if (!checkRange('Strikes', strikes, 0, 50)) return;
+
+  var confirmMsg = 'Submit trial: ' + snakeId + ' vs ' + bootId + ', Outcome: ' + outcome + '?';
+  if (trialResult.isRepeat) confirmMsg = 'This is a repeat trial for this Snake+Boot+Date.\n' + confirmMsg;
+  if (!confirm(confirmMsg)) return;
 
   showLoading('Uploading photos & saving trial...');
 
@@ -1588,12 +1782,13 @@ async function submitTrialForm() {
     outcome: outcome,
     strikes: outcome === 'NP-R' ? 0 : parseInt(strikes) || 0,
     regionStruck: regionChecked.join('/'),
-    tempC: document.getElementById('t-temp').value || '',
-    humidityPct: document.getElementById('t-hum').value || '',
+    tempC: tempC,
+    humidityPct: humidityPct,
     notes: document.getElementById('t-notes').value.trim(),
     trialStartTime: trialStartTime ? formatTimeHHMMSS(trialStartTime) : '',
     trialStopTime: trialStopTime ? formatTimeHHMMSS(trialStopTime) : '',
     trialDurationSec: (trialStartTime && trialStopTime) ? Math.round((trialStopTime - trialStartTime) / 1000) : '',
+    recordedBy: getRecorderName(),
     photos: photos
   };
 
@@ -1610,7 +1805,13 @@ async function submitTrialForm() {
     })
     .catch(function(err) {
       hideLoading();
-      showToast('Error: ' + (err.message || err), 'error');
+      var queued = queueSubmission('submitTrial', data);
+      if (queued) {
+        showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
+        clearTrialForm();
+      } else {
+        showToast('Error: ' + (err.message || err) + ' — please retry once online', 'error');
+      }
     });
 }
 
@@ -1634,6 +1835,7 @@ function clearTrialForm() {
   selectedBoot = null;
   selectedSnake = null;
   resetTrialTiming();
+  formDirty.trial = false;
   updateTrialId();
   document.getElementById('region-section').style.display = 'block';
   document.getElementById('boot-photo-section').style.display = 'block';
@@ -1650,6 +1852,7 @@ function formatTimeHHMMSS(d) {
 
 function markTrialStart() {
   trialStartTime = new Date();
+  formDirty.trial = true;
   document.getElementById('btn-trial-start').textContent = 'Start: ' + formatTimeHHMMSS(trialStartTime);
   document.getElementById('btn-trial-start').disabled = true;
   document.getElementById('btn-trial-stop').disabled = false;
@@ -1657,6 +1860,7 @@ function markTrialStart() {
 
 function markTrialStop() {
   trialStopTime = new Date();
+  formDirty.trial = true;
   document.getElementById('btn-trial-stop').textContent = 'Stop: ' + formatTimeHHMMSS(trialStopTime);
   document.getElementById('btn-trial-stop').disabled = true;
 
@@ -1697,6 +1901,15 @@ async function submitBootForm() {
   var bootId = abbr + '-' + size;
   var certified = bootCertified;
 
+  var thickT = parseFloat(document.getElementById('b-thick-t').value) || '';
+  var thickLM = parseFloat(document.getElementById('b-thick-lm').value) || '';
+  var thickI = parseFloat(document.getElementById('b-thick-i').value) || '';
+  if (!checkRange('Thickness T', thickT, 0.5, 20)) return;
+  if (!checkRange('Thickness LM', thickLM, 0.5, 20)) return;
+  if (!checkRange('Thickness I', thickI, 0.5, 20)) return;
+
+  if (!confirm('Register boot ' + bootId + ' (' + brandFull + ', size ' + size + ')?')) return;
+
   showLoading('Registering boot...');
 
   var photos = await collectPhotos([
@@ -1713,9 +1926,8 @@ async function submitBootForm() {
     isStandard: certified ? document.getElementById('b-is').value.trim() : 'Not Certified',
     mfgDate: document.getElementById('b-mfg').value.trim(),
     batch: document.getElementById('b-batch').value.trim(),
-    thickT: parseFloat(document.getElementById('b-thick-t').value) || '',
-    thickLM: parseFloat(document.getElementById('b-thick-lm').value) || '',
-    thickI: parseFloat(document.getElementById('b-thick-i').value) || '',
+    thickT: thickT, thickLM: thickLM, thickI: thickI,
+    recordedBy: getRecorderName(),
     photos: photos
   };
 
@@ -1732,7 +1944,13 @@ async function submitBootForm() {
     })
     .catch(function(err) {
       hideLoading();
-      showToast('Error: ' + (err.message || err), 'error');
+      var queued = queueSubmission('registerBoot', data);
+      if (queued) {
+        showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
+        clearBootForm();
+      } else {
+        showToast('Error: ' + (err.message || err) + ' — please retry once online', 'error');
+      }
     });
 }
 
@@ -1748,6 +1966,7 @@ function clearBootForm() {
   ['prev-b-lat','prev-b-label'].forEach(function(id) {
     document.getElementById(id).classList.remove('visible');
   });
+  formDirty.boot = false;
   updateBootId();
 }
 
@@ -1771,6 +1990,23 @@ async function submitSnakeForm() {
   var padded = String(parseInt(num)).padStart(2, '0');
   var snakeId = species + '-' + age + '-' + padded;
 
+  var tl = parseFloat(document.getElementById('s-tl').value) || '';
+  var svl = parseFloat(document.getElementById('s-svl').value) || '';
+  var hl = parseFloat(document.getElementById('s-hl').value) || '';
+  var hw = parseFloat(document.getElementById('s-hw').value) || '';
+  var bm = parseFloat(document.getElementById('s-bm').value) || '';
+  var flL = parseFloat(document.getElementById('s-fll').value) || '';
+  var flR = parseFloat(document.getElementById('s-flr').value) || '';
+  if (!checkRange('TL', tl, 200, 3000)) return;
+  if (!checkRange('SVL', svl, 150, 2500)) return;
+  if (!checkRange('HL', hl, 5, 100)) return;
+  if (!checkRange('HW', hw, 5, 100)) return;
+  if (!checkRange('BM', bm, 5, 5000)) return;
+  if (!checkRange('Fang L', flL, 1, 30)) return;
+  if (!checkRange('Fang R', flR, 1, 30)) return;
+
+  if (!confirm('Register snake ' + snakeId + '?')) return;
+
   showLoading('Registering snake...');
 
   var data = {
@@ -1778,18 +2014,13 @@ async function submitSnakeForm() {
     speciesCode: species,
     ageClass: age,
     sex: document.getElementById('s-sex').value,
-    tl: parseFloat(document.getElementById('s-tl').value) || '',
-    svl: parseFloat(document.getElementById('s-svl').value) || '',
-    hl: parseFloat(document.getElementById('s-hl').value) || '',
-    hw: parseFloat(document.getElementById('s-hw').value) || '',
-    bm: parseFloat(document.getElementById('s-bm').value) || '',
-    flL: parseFloat(document.getElementById('s-fll').value) || '',
-    flR: parseFloat(document.getElementById('s-flr').value) || '',
+    tl: tl, svl: svl, hl: hl, hw: hw, bm: bm, flL: flL, flR: flR,
     bodyCondition: document.getElementById('s-condition').value,
     lastFeedDate: document.getElementById('s-lastfeed').value || '',
     isoInTime: snakeInTime ? formatSheetDateTime(snakeInTime) : '',
     isoOutTime: snakeOutTime ? formatSheetDateTime(snakeOutTime) : '',
-    timeToUnconsciousSec: (snakeInTime && snakeOutTime) ? Math.round((snakeOutTime - snakeInTime) / 1000) : ''
+    timeToUnconsciousSec: (snakeInTime && snakeOutTime) ? Math.round((snakeOutTime - snakeInTime) / 1000) : '',
+    recordedBy: getRecorderName()
   };
 
   apiPost('registerSnake', data)
@@ -1805,7 +2036,13 @@ async function submitSnakeForm() {
     })
     .catch(function(err) {
       hideLoading();
-      showToast('Error: ' + (err.message || err), 'error');
+      var queued = queueSubmission('registerSnake', data);
+      if (queued) {
+        showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
+        clearSnakeForm();
+      } else {
+        showToast('Error: ' + (err.message || err) + ' — please retry once online', 'error');
+      }
     });
 }
 
@@ -1817,6 +2054,7 @@ function clearSnakeForm() {
   document.getElementById('s-sex').value = 'U';
   document.getElementById('s-condition').value = 'Good';
   document.getElementById('s-lastfeed').value = '';
+  formDirty.snake = false;
   resetSnakeInOut();
   updateSnakeId();
 }
@@ -1835,6 +2073,7 @@ function formatSheetDateTime(d) {
 
 function markSnakeIn() {
   snakeInTime = new Date();
+  formDirty.snake = true;
   document.getElementById('btn-snake-in').textContent = 'Snake In: ' + snakeInTime.toLocaleTimeString([], { hour12: false });
   document.getElementById('btn-snake-in').disabled = true;
   document.getElementById('btn-snake-out').disabled = false;
@@ -1842,6 +2081,7 @@ function markSnakeIn() {
 
 function markSnakeOut() {
   snakeOutTime = new Date();
+  formDirty.snake = true;
   document.getElementById('btn-snake-out').textContent = 'Snake Out: ' + snakeOutTime.toLocaleTimeString([], { hour12: false });
   document.getElementById('btn-snake-out').disabled = true;
 
