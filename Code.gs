@@ -77,7 +77,8 @@ var TRIAL_HEADERS = [
   'TL_mm','SVL_mm','HL_mm','HW_mm','BM_g',
   'FL_L_mm','FL_R_mm','Dentition',
   'Outcome','Strikes','Region_Struck',
-  'Temp_C','Humidity_pct','Photo_Links','Notes','Timestamp'
+  'Temp_C','Humidity_pct','Photo_Links','Notes','Timestamp',
+  'Trial_Start_Time','Trial_Stop_Time','Trial_Duration_Sec'
 ];
 
 var BOOT_HEADERS = [
@@ -172,7 +173,8 @@ function getAllTrials() {
       tl: r[13], svl: r[14], hl: r[15], hw: r[16], bm: r[17],
       flL: r[18], flR: r[19], dentition: r[20],
       outcome: r[21], strikes: r[22], regionStruck: r[23],
-      tempC: r[24], humidityPct: r[25], photoLinks: r[26], notes: r[27]
+      tempC: r[24], humidityPct: r[25], photoLinks: r[26], notes: r[27],
+      trialStartTime: r[29], trialStopTime: r[30], trialDurationSec: r[31]
     });
   }
   return result;
@@ -284,6 +286,9 @@ function submitTrial(data) {
 
   var photoLinks = uploadPhotos_(data.photos, data.trialId);
 
+  // Leading apostrophe forces plain text so Sheets doesn't auto-detect
+  // "HH:MM:SS" as a real time value and corrupt it on the next read-back
+  // (same issue fixed earlier for the isoflurane in/out timestamps).
   sheet.appendRow([
     data.trialId, data.date, data.session,
     data.bootId, data.bootBrand, data.bootSize,
@@ -294,7 +299,10 @@ function submitTrial(data) {
     data.outcome, data.strikes, data.regionStruck,
     data.tempC, data.humidityPct,
     photoLinks.join('\n'), data.notes,
-    new Date().toISOString()
+    new Date().toISOString(),
+    data.trialStartTime ? "'" + data.trialStartTime : '',
+    data.trialStopTime ? "'" + data.trialStopTime : '',
+    data.trialDurationSec || ''
   ]);
 
   return { success: true, message: 'Trial recorded: ' + data.trialId };

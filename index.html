@@ -175,6 +175,13 @@
     .btn-primary { background: var(--amber); color: #fff; box-shadow: 0 3px 10px rgba(245,124,0,0.28); }
     .btn-primary:active { background: var(--amber-dark); transform: scale(0.98); }
     .btn-primary:disabled { background: #aaa; cursor: not-allowed; box-shadow: none; }
+    .btn-toggle {
+      flex: 1; padding: 12px; border: 1.5px solid var(--border); border-radius: 8px;
+      background: #fff; color: var(--text-mid); font-weight: 700; font-size: 14px;
+      cursor: pointer; margin-top: 8px;
+      transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    }
+    .btn-toggle.active { background: var(--green); border-color: var(--green); color: #fff; }
 
     /* --- Sticky submit bar --- */
     .sticky-spacer { height: 84px; }
@@ -331,6 +338,7 @@
     .outcome-badge.NP { background: var(--green); }
     .outcome-badge.NP-M { background: var(--amber); }
     .outcome-badge.NP-R { background: var(--text-light); }
+    .outcome-badge.VOB { background: #8e44ad; }
     .outcome-badge.INC { background: #999; }
 
     /* --- All Trials Summary --- */
@@ -632,16 +640,6 @@
     <div class="card-title">Session Details</div>
     <div class="row">
       <div>
-        <label for="t-date">Date</label>
-        <input type="date" id="t-date">
-      </div>
-      <div>
-        <label>Session #</label>
-        <input type="text" id="t-session" readonly placeholder="Auto">
-      </div>
-    </div>
-    <div class="row">
-      <div>
         <label for="t-temp">Temp (&deg;C)</label>
         <input type="number" id="t-temp" step="0.1" inputmode="decimal" placeholder="e.g. 28.5">
       </div>
@@ -649,6 +647,22 @@
         <label for="t-hum">Humidity (%)</label>
         <input type="number" id="t-hum" step="1" inputmode="numeric" placeholder="e.g. 65">
       </div>
+    </div>
+    <label for="t-date">Date</label>
+    <input type="date" id="t-date">
+  </div>
+
+  <!-- Trial Timing -->
+  <div class="card">
+    <div class="card-title">Trial Timing</div>
+    <div class="row">
+      <button type="button" class="btn btn-primary" id="btn-trial-start" onclick="markTrialStart()" style="margin-top:0">Trial Start</button>
+      <button type="button" class="btn btn-primary" id="btn-trial-stop" onclick="markTrialStop()" style="margin-top:0" disabled>Trial Stop</button>
+    </div>
+    <div class="detail-summary" id="trial-time-summary" style="display:none">
+      Start: <span id="trial-start-display">&mdash;</span><br>
+      Stop: <span id="trial-stop-display">&mdash;</span><br>
+      Duration: <span id="trial-duration-display">&mdash;</span>
     </div>
   </div>
 
@@ -682,6 +696,7 @@
       <option value="NP">NP &mdash; No puncture (balloon intact)</option>
       <option value="NP-M">NP-M &mdash; No puncture, fang marks visible</option>
       <option value="NP-R">NP-R &mdash; Non-reactive / refused to strike</option>
+      <option value="VOB">VOB &mdash; Venom on the boot</option>
       <option value="INC">INC &mdash; Incomplete trial</option>
     </select>
 
@@ -739,7 +754,7 @@
   <div class="id-badge pending" id="boot-id-badge">
     <div class="id-label">Boot ID</div>
     <div id="boot-id-text">Fill details below</div>
-    <div class="id-warn" id="boot-id-warn" style="display:none">Already registered &mdash; use a different size/session</div>
+    <div class="id-warn" id="boot-id-warn" style="display:none">Already registered &mdash; use a different size</div>
   </div>
 
   <div class="card">
@@ -755,18 +770,19 @@
         <input type="number" id="b-size" inputmode="numeric" placeholder="e.g. 42" oninput="updateBootId()">
       </div>
     </div>
-    <div class="row">
-      <div>
-        <label for="b-session">Session #</label>
-        <input type="number" id="b-session" min="1" inputmode="numeric" placeholder="e.g. 1" oninput="updateBootId()">
-      </div>
-    </div>
     <label for="b-brand">Full Brand Name</label>
     <input type="text" id="b-brand" placeholder="e.g. Paragon">
     <label for="b-model">Model Name</label>
     <input type="text" id="b-model" placeholder="e.g. Safety Gumboot Pro">
-    <label for="b-is">IS/BIS Standard</label>
-    <input type="text" id="b-is" placeholder="e.g. IS:12254">
+    <label>IS/BIS Certification</label>
+    <div class="row">
+      <button type="button" class="btn-toggle" id="btn-certified-yes" onclick="setCertified(true)">Certified</button>
+      <button type="button" class="btn-toggle active" id="btn-certified-no" onclick="setCertified(false)">Not Certified</button>
+    </div>
+    <div id="b-is-number-wrap" style="display:none">
+      <label for="b-is">IS/BIS Number</label>
+      <input type="text" id="b-is" placeholder="e.g. IS:12254">
+    </div>
     <div class="row">
       <div>
         <label for="b-mfg">Mfg Date</label>
@@ -1231,6 +1247,10 @@ function buildTrialDetailHtml_(t) {
   html += 'Fang L/R: <span>' + (t.flL || '-') + ' / ' + (t.flR || '-') + '</span> mm &middot; Dentition: <span>' + (t.dentition || '-') + '</span><br>';
   html += 'Boot: <span>' + t.bootId + '</span> &middot; Thickness T/LM/I: <span>' + (t.bootThickT || '-') + ' / ' + (t.bootThickLM || '-') + ' / ' + (t.bootThickI || '-') + '</span> mm<br>';
   html += 'Temp: <span>' + (t.tempC || '-') + '&deg;C</span> &middot; Humidity: <span>' + (t.humidityPct || '-') + '%</span><br>';
+  if (t.trialStartTime || t.trialStopTime) {
+    html += 'Trial: <span>' + (t.trialStartTime || '-') + '</span> to <span>' + (t.trialStopTime || '-') + '</span>' +
+      (t.trialDurationSec ? ' (' + t.trialDurationSec + 's)' : '') + '<br>';
+  }
   if (t.notes) html += 'Notes: ' + t.notes + '<br>';
   if (t.photoLinks) {
     String(t.photoLinks).split('\n').forEach(function(line) {
@@ -1277,7 +1297,7 @@ function toggleDetail(id) {
 }
 
 // ----- All Trials Summary -----
-var OUTCOME_ORDER = ['P', 'NP', 'NP-M', 'NP-R', 'INC'];
+var OUTCOME_ORDER = ['P', 'NP', 'NP-M', 'NP-R', 'VOB', 'INC'];
 
 function renderTrialSummary() {
   var statsEl = document.getElementById('trial-summary-stats');
@@ -1369,11 +1389,9 @@ function onBootSelect() {
     info.style.display = 'block';
     info.innerHTML =
       '<span>' + selectedBoot.brandFull + '</span> &middot; Size ' + selectedBoot.size +
-      ' &middot; Session ' + selectedBoot.session +
       '<br>Thickness &mdash; T: <span>' + selectedBoot.thickT + '</span> mm, ' +
       'LM: <span>' + selectedBoot.thickLM + '</span> mm, ' +
       'I: <span>' + selectedBoot.thickI + '</span> mm';
-    document.getElementById('t-session').value = 'S' + selectedBoot.session;
   }
   updateTrialId();
 }
@@ -1549,7 +1567,6 @@ async function submitTrialForm() {
   var data = {
     trialId: trialId,
     date: date,
-    session: selectedBoot ? 'S' + selectedBoot.session : '',
     bootId: bootId,
     bootBrand: selectedBoot ? selectedBoot.brandFull : '',
     bootSize: selectedBoot ? selectedBoot.size : '',
@@ -1574,6 +1591,9 @@ async function submitTrialForm() {
     tempC: document.getElementById('t-temp').value || '',
     humidityPct: document.getElementById('t-hum').value || '',
     notes: document.getElementById('t-notes').value.trim(),
+    trialStartTime: trialStartTime ? formatTimeHHMMSS(trialStartTime) : '',
+    trialStopTime: trialStopTime ? formatTimeHHMMSS(trialStopTime) : '',
+    trialDurationSec: (trialStartTime && trialStopTime) ? Math.round((trialStopTime - trialStartTime) / 1000) : '',
     photos: photos
   };
 
@@ -1600,7 +1620,8 @@ function clearTrialForm() {
   document.getElementById('t-outcome').value = '';
   document.getElementById('t-strikes').value = '';
   document.getElementById('t-notes').value = '';
-  document.getElementById('t-session').value = '';
+  document.getElementById('t-temp').value = '';
+  document.getElementById('t-hum').value = '';
   document.querySelectorAll('#region-checks input').forEach(function(cb) { cb.checked = false; });
   document.getElementById('boot-info').style.display = 'none';
   document.getElementById('snake-info').style.display = 'none';
@@ -1612,9 +1633,48 @@ function clearTrialForm() {
   });
   selectedBoot = null;
   selectedSnake = null;
+  resetTrialTiming();
   updateTrialId();
   document.getElementById('region-section').style.display = 'block';
   document.getElementById('boot-photo-section').style.display = 'block';
+}
+
+// ----- Trial timing (start/stop) -----
+var trialStartTime = null;
+var trialStopTime = null;
+
+function formatTimeHHMMSS(d) {
+  function pad(n) { return String(n).padStart(2, '0'); }
+  return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function markTrialStart() {
+  trialStartTime = new Date();
+  document.getElementById('btn-trial-start').textContent = 'Start: ' + formatTimeHHMMSS(trialStartTime);
+  document.getElementById('btn-trial-start').disabled = true;
+  document.getElementById('btn-trial-stop').disabled = false;
+}
+
+function markTrialStop() {
+  trialStopTime = new Date();
+  document.getElementById('btn-trial-stop').textContent = 'Stop: ' + formatTimeHHMMSS(trialStopTime);
+  document.getElementById('btn-trial-stop').disabled = true;
+
+  var seconds = Math.round((trialStopTime - trialStartTime) / 1000);
+  document.getElementById('trial-start-display').textContent = formatTimeHHMMSS(trialStartTime);
+  document.getElementById('trial-stop-display').textContent = formatTimeHHMMSS(trialStopTime);
+  document.getElementById('trial-duration-display').textContent = seconds + 's';
+  document.getElementById('trial-time-summary').style.display = 'block';
+}
+
+function resetTrialTiming() {
+  trialStartTime = null;
+  trialStopTime = null;
+  document.getElementById('btn-trial-start').textContent = 'Trial Start';
+  document.getElementById('btn-trial-start').disabled = false;
+  document.getElementById('btn-trial-stop').textContent = 'Trial Stop';
+  document.getElementById('btn-trial-stop').disabled = true;
+  document.getElementById('trial-time-summary').style.display = 'none';
 }
 
 // ----- Submit: Boot -----
@@ -1622,13 +1682,11 @@ async function submitBootForm() {
   clearInvalid();
   var abbr = document.getElementById('b-abbr').value.trim().toUpperCase();
   var size = document.getElementById('b-size').value.trim();
-  var session = document.getElementById('b-session').value.trim();
   var brandFull = document.getElementById('b-brand').value.trim();
 
   var errors = [];
   if (!abbr || abbr.length < 2) { errors.push('Brand Abbr'); markInvalid('b-abbr'); }
   if (!size) { errors.push('Size'); markInvalid('b-size'); }
-  if (!session) { errors.push('Session'); markInvalid('b-session'); }
   if (!brandFull) { errors.push('Brand Name'); markInvalid('b-brand'); }
 
   if (errors.length > 0) {
@@ -1636,7 +1694,8 @@ async function submitBootForm() {
     return;
   }
 
-  var bootId = abbr + '-' + size + '-S' + session;
+  var bootId = abbr + '-' + size;
+  var certified = bootCertified;
 
   showLoading('Registering boot...');
 
@@ -1651,8 +1710,7 @@ async function submitBootForm() {
     brandFull: brandFull,
     model: document.getElementById('b-model').value.trim(),
     size: parseInt(size),
-    session: parseInt(session),
-    isStandard: document.getElementById('b-is').value.trim(),
+    isStandard: certified ? document.getElementById('b-is').value.trim() : 'Not Certified',
     mfgDate: document.getElementById('b-mfg').value.trim(),
     batch: document.getElementById('b-batch').value.trim(),
     thickT: parseFloat(document.getElementById('b-thick-t').value) || '',
@@ -1679,10 +1737,11 @@ async function submitBootForm() {
 }
 
 function clearBootForm() {
-  ['b-abbr','b-brand','b-model','b-size','b-session','b-is','b-mfg','b-batch',
+  ['b-abbr','b-brand','b-model','b-size','b-is','b-mfg','b-batch',
    'b-thick-t','b-thick-lm','b-thick-i'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
+  setCertified(false);
   ['b-photo-lat','b-photo-label'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
@@ -1808,6 +1867,16 @@ function resetSnakeInOut() {
 }
 
 // ----- ID generators -----
+var bootCertified = false;
+
+function setCertified(val) {
+  bootCertified = val;
+  document.getElementById('btn-certified-yes').classList.toggle('active', val === true);
+  document.getElementById('btn-certified-no').classList.toggle('active', val === false);
+  document.getElementById('b-is-number-wrap').style.display = val ? 'block' : 'none';
+  if (!val) document.getElementById('b-is').value = '';
+}
+
 function updateBootId() {
   var badge = document.getElementById('boot-id-badge');
   var text = document.getElementById('boot-id-text');
@@ -1815,9 +1884,8 @@ function updateBootId() {
   var submitBtn = document.getElementById('btn-submit-boot');
   var abbr = document.getElementById('b-abbr').value.trim().toUpperCase();
   var size = document.getElementById('b-size').value.trim();
-  var session = document.getElementById('b-session').value.trim();
-  if (abbr && size && session) {
-    var bootId = abbr + '-' + size + '-S' + session;
+  if (abbr && size) {
+    var bootId = abbr + '-' + size;
     text.textContent = bootId;
     badge.classList.remove('pending');
     var isDup = bootsCache.some(function(b) { return b.bootId === bootId; });
