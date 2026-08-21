@@ -670,20 +670,6 @@
     <input type="date" id="t-date">
   </div>
 
-  <!-- Trial Timing -->
-  <div class="card">
-    <div class="card-title">Trial Timing</div>
-    <div class="row">
-      <button type="button" class="btn btn-primary" id="btn-trial-start" onclick="markTrialStart()" style="margin-top:0">Trial Start</button>
-      <button type="button" class="btn btn-primary" id="btn-trial-stop" onclick="markTrialStop()" style="margin-top:0" disabled>Trial Stop</button>
-    </div>
-    <div class="detail-summary" id="trial-time-summary" style="display:none">
-      Start: <span id="trial-start-display">&mdash;</span><br>
-      Stop: <span id="trial-stop-display">&mdash;</span><br>
-      Duration: <span id="trial-duration-display">&mdash;</span>
-    </div>
-  </div>
-
   <!-- Boot selection -->
   <div class="card">
     <div class="card-title">Boot</div>
@@ -702,6 +688,20 @@
       <option value="">-- select snake --</option>
     </select>
     <div id="snake-info" class="detail-summary" style="display:none"></div>
+  </div>
+
+  <!-- Trial Timing -->
+  <div class="card">
+    <div class="card-title">Trial Timing</div>
+    <div class="row">
+      <button type="button" class="btn btn-primary" id="btn-trial-start" onclick="markTrialStart()" style="margin-top:0">Trial Start</button>
+      <button type="button" class="btn btn-primary" id="btn-trial-stop" onclick="markTrialStop()" style="margin-top:0" disabled>Trial Stop</button>
+    </div>
+    <div class="detail-summary" id="trial-time-summary" style="display:none">
+      Start: <span id="trial-start-display">&mdash;</span><br>
+      Stop: <span id="trial-stop-display">&mdash;</span><br>
+      Duration: <span id="trial-duration-display">&mdash;</span>
+    </div>
   </div>
 
   <!-- Outcome -->
