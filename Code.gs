@@ -99,7 +99,7 @@ var BOOT_HEADERS = [
   'Boot_ID','Brand_Abbr','Brand_Full','Model','Boot_Size','Session',
   'IS_Standard','Mfg_Date','Batch_No',
   'Thick_T_mm','Thick_LM_mm','Thick_I_mm',
-  'Photo_Links','Registered_Date','Recorded_By'
+  'Photo_Links','Registered_Date','Recorded_By','Model_Abbr'
 ];
 
 var SNAKE_HEADERS = [
@@ -290,6 +290,7 @@ function registerBoot(data) {
   var missing = missingFields_(data, [
     { key: 'bootId', label: 'Boot ID' },
     { key: 'brandAbbr', label: 'Brand Abbr' },
+    { key: 'modelAbbr', label: 'Model Abbr' },
     { key: 'brandFull', label: 'Brand Name' },
     { key: 'size', label: 'Size' }
   ]);
@@ -316,7 +317,7 @@ function registerBoot(data) {
       data.bootId, data.brandAbbr, sanitizeCell_(data.brandFull), sanitizeCell_(data.model),
       data.size, data.session, sanitizeCell_(data.isStandard), sanitizeCell_(data.mfgDate), sanitizeCell_(data.batch),
       data.thickT, data.thickLM, data.thickI,
-      photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy)
+      photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy), data.modelAbbr
     ]);
 
     return { success: true, message: 'Boot registered: ' + data.bootId };

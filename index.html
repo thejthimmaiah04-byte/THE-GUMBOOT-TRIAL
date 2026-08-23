@@ -772,15 +772,20 @@
   <div class="id-badge pending" id="boot-id-badge">
     <div class="id-label">Boot ID</div>
     <div id="boot-id-text">Fill details below</div>
-    <div class="id-warn" id="boot-id-warn" style="display:none">Already registered &mdash; use a different size</div>
+    <div class="id-warn" id="boot-id-warn" style="display:none">Already registered &mdash; use a different size or model abbr</div>
   </div>
 
   <div class="card">
     <div class="card-title">Boot Identity</div>
-    <div class="row">
+    <div class="row row-3">
       <div>
         <label for="b-abbr">Brand Abbr (3 letters)</label>
         <input type="text" id="b-abbr" maxlength="3" placeholder="e.g. PAR"
+               style="text-transform:uppercase" oninput="updateBootId()">
+      </div>
+      <div>
+        <label for="b-model-abbr">Model Abbr</label>
+        <input type="text" id="b-model-abbr" maxlength="4" placeholder="e.g. SGP"
                style="text-transform:uppercase" oninput="updateBootId()">
       </div>
       <div>
@@ -1885,11 +1890,13 @@ function resetTrialTiming() {
 async function submitBootForm() {
   clearInvalid();
   var abbr = document.getElementById('b-abbr').value.trim().toUpperCase();
+  var modelAbbr = document.getElementById('b-model-abbr').value.trim().toUpperCase();
   var size = document.getElementById('b-size').value.trim();
   var brandFull = document.getElementById('b-brand').value.trim();
 
   var errors = [];
   if (!abbr || abbr.length < 2) { errors.push('Brand Abbr'); markInvalid('b-abbr'); }
+  if (!modelAbbr) { errors.push('Model Abbr'); markInvalid('b-model-abbr'); }
   if (!size) { errors.push('Size'); markInvalid('b-size'); }
   if (!brandFull) { errors.push('Brand Name'); markInvalid('b-brand'); }
 
@@ -1898,7 +1905,7 @@ async function submitBootForm() {
     return;
   }
 
-  var bootId = abbr + '-' + size;
+  var bootId = abbr + modelAbbr + '-' + size;
   var certified = bootCertified;
 
   var thickT = parseFloat(document.getElementById('b-thick-t').value) || '';
@@ -1908,7 +1915,7 @@ async function submitBootForm() {
   if (!checkRange('Thickness LM', thickLM, 0.5, 20)) return;
   if (!checkRange('Thickness I', thickI, 0.5, 20)) return;
 
-  if (!confirm('Register boot ' + bootId + ' (' + brandFull + ', size ' + size + ')?')) return;
+  if (!confirm('Register boot ' + bootId + ' (' + brandFull + ' ' + modelAbbr + ', size ' + size + ')?')) return;
 
   showLoading('Registering boot...');
 
@@ -1920,6 +1927,7 @@ async function submitBootForm() {
   var data = {
     bootId: bootId,
     brandAbbr: abbr,
+    modelAbbr: modelAbbr,
     brandFull: brandFull,
     model: document.getElementById('b-model').value.trim(),
     size: parseInt(size),
@@ -1955,7 +1963,7 @@ async function submitBootForm() {
 }
 
 function clearBootForm() {
-  ['b-abbr','b-brand','b-model','b-size','b-is','b-mfg','b-batch',
+  ['b-abbr','b-model-abbr','b-brand','b-model','b-size','b-is','b-mfg','b-batch',
    'b-thick-t','b-thick-lm','b-thick-i'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
@@ -2123,9 +2131,10 @@ function updateBootId() {
   var warn = document.getElementById('boot-id-warn');
   var submitBtn = document.getElementById('btn-submit-boot');
   var abbr = document.getElementById('b-abbr').value.trim().toUpperCase();
+  var modelAbbr = document.getElementById('b-model-abbr').value.trim().toUpperCase();
   var size = document.getElementById('b-size').value.trim();
-  if (abbr && size) {
-    var bootId = abbr + '-' + size;
+  if (abbr && modelAbbr && size) {
+    var bootId = abbr + modelAbbr + '-' + size;
     text.textContent = bootId;
     badge.classList.remove('pending');
     var isDup = bootsCache.some(function(b) { return b.bootId === bootId; });
