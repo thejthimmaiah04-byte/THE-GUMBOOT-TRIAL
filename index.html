@@ -769,6 +769,14 @@
 <!-- ==================== PAGE: REGISTER BOOT ==================== -->
 <div id="page-boot" class="page">
 
+  <div class="card">
+    <div class="card-title">Edit Existing Boot</div>
+    <label for="edit-boot-select">Select a boot to edit, or leave blank to register a new one</label>
+    <select id="edit-boot-select" onchange="loadBootForEdit()">
+      <option value="">-- Register new boot --</option>
+    </select>
+  </div>
+
   <div class="id-badge pending" id="boot-id-badge">
     <div class="id-label">Boot ID</div>
     <div id="boot-id-text">Fill details below</div>
@@ -856,6 +864,14 @@
 
 <!-- ==================== PAGE: REGISTER SNAKE ==================== -->
 <div id="page-snake" class="page">
+
+  <div class="card">
+    <div class="card-title">Edit Existing Snake</div>
+    <label for="edit-snake-select">Select a snake to edit, or leave blank to register a new one</label>
+    <select id="edit-snake-select" onchange="loadSnakeForEdit()">
+      <option value="">-- Register new snake --</option>
+    </select>
+  </div>
 
   <div class="id-badge pending" id="snake-id-badge">
     <div class="id-label">Snake ID</div>
@@ -1513,6 +1529,7 @@ function loadRegistries() {
   apiGet('getBoots').then(function(boots) {
     bootsCache = boots || [];
     populateBootDropdown();
+    populateEditBootDropdown();
   }).catch(function(e) {
     console.error('Failed to load boots:', e);
   });
@@ -1520,9 +1537,120 @@ function loadRegistries() {
   apiGet('getSnakes').then(function(snakes) {
     snakesCache = snakes || [];
     populateSnakeDropdown();
+    populateEditSnakeDropdown();
   }).catch(function(e) {
     console.error('Failed to load snakes:', e);
   });
+}
+
+// ----- Edit existing boot/snake -----
+var editingBootId = null;
+var editingSnakeId = null;
+
+function populateEditBootDropdown() {
+  var sel = document.getElementById('edit-boot-select');
+  if (!sel) return;
+  var currentVal = sel.value;
+  sel.innerHTML = '<option value="">-- Register new boot --</option>';
+  bootsCache.forEach(function(b) {
+    var opt = document.createElement('option');
+    opt.value = b.bootId;
+    opt.textContent = b.bootId + ' — ' + b.brandFull + ' (Size ' + b.size + ')';
+    sel.appendChild(opt);
+  });
+  sel.value = currentVal;
+}
+
+function populateEditSnakeDropdown() {
+  var sel = document.getElementById('edit-snake-select');
+  if (!sel) return;
+  var currentVal = sel.value;
+  sel.innerHTML = '<option value="">-- Register new snake --</option>';
+  snakesCache.forEach(function(s) {
+    var opt = document.createElement('option');
+    opt.value = s.snakeId;
+    opt.textContent = s.snakeId + ' — ' + s.commonName + ', ' + s.ageClass;
+    sel.appendChild(opt);
+  });
+  sel.value = currentVal;
+}
+
+function loadBootForEdit() {
+  var id = document.getElementById('edit-boot-select').value;
+  if (!id) {
+    clearBootForm();
+    return;
+  }
+  var b = bootsCache.find(function(x) { return x.bootId === id; });
+  if (!b) return;
+
+  editingBootId = id;
+  document.getElementById('b-abbr').value = b.brandAbbr || '';
+  document.getElementById('b-model-abbr').value = b.modelAbbr || '';
+  document.getElementById('b-size').value = b.size;
+  document.getElementById('b-abbr').disabled = true;
+  document.getElementById('b-model-abbr').disabled = true;
+  document.getElementById('b-size').disabled = true;
+
+  document.getElementById('b-brand').value = b.brandFull || '';
+  document.getElementById('b-model').value = b.model || '';
+  document.getElementById('b-mfg').value = b.mfgDate || '';
+  document.getElementById('b-batch').value = b.batch || '';
+  document.getElementById('b-thick-t').value = b.thickT || '';
+  document.getElementById('b-thick-lm').value = b.thickLM || '';
+  document.getElementById('b-thick-i').value = b.thickI || '';
+
+  var certified = !!(b.isStandard && b.isStandard !== 'Not Certified');
+  setCertified(certified);
+  if (certified) document.getElementById('b-is').value = b.isStandard;
+
+  document.getElementById('boot-id-text').textContent = id;
+  document.getElementById('boot-id-badge').classList.remove('pending', 'duplicate');
+  document.getElementById('boot-id-warn').style.display = 'none';
+
+  var submitBtn = document.getElementById('btn-submit-boot');
+  submitBtn.textContent = 'Update Boot';
+  submitBtn.disabled = false;
+  formDirty.boot = false;
+}
+
+function loadSnakeForEdit() {
+  var id = document.getElementById('edit-snake-select').value;
+  if (!id) {
+    clearSnakeForm();
+    return;
+  }
+  var s = snakesCache.find(function(x) { return x.snakeId === id; });
+  if (!s) return;
+
+  editingSnakeId = id;
+  var idParts = id.split('-');
+  document.getElementById('s-species').value = s.speciesCode || '';
+  document.getElementById('s-age').value = s.ageClass || '';
+  document.getElementById('s-num').value = idParts.length >= 3 ? parseInt(idParts[2], 10) : '';
+  document.getElementById('s-species').disabled = true;
+  document.getElementById('s-age').disabled = true;
+  document.getElementById('s-num').disabled = true;
+
+  document.getElementById('s-sex').value = s.sex || 'U';
+  document.getElementById('s-tl').value = s.tl || '';
+  document.getElementById('s-svl').value = s.svl || '';
+  document.getElementById('s-hl').value = s.hl || '';
+  document.getElementById('s-hw').value = s.hw || '';
+  document.getElementById('s-bm').value = s.bm || '';
+  document.getElementById('s-fll').value = s.flL || '';
+  document.getElementById('s-flr').value = s.flR || '';
+  document.getElementById('s-condition').value = s.bodyCondition || 'Good';
+  document.getElementById('s-lastfeed').value = s.lastFeedDate || '';
+
+  document.getElementById('snake-id-text').textContent = id;
+  document.getElementById('snake-id-badge').classList.remove('pending', 'duplicate');
+  document.getElementById('snake-id-warn').style.display = 'none';
+
+  var submitBtn = document.getElementById('btn-submit-snake');
+  submitBtn.textContent = 'Update Snake';
+  submitBtn.disabled = false;
+  formDirty.snake = false;
 }
 
 function populateBootDropdown() {
@@ -1905,7 +2033,8 @@ async function submitBootForm() {
     return;
   }
 
-  var bootId = abbr + modelAbbr + '-' + size;
+  var isEdit = !!editingBootId;
+  var bootId = editingBootId || (abbr + modelAbbr + '-' + size);
   var certified = bootCertified;
 
   var thickT = parseFloat(document.getElementById('b-thick-t').value) || '';
@@ -1915,9 +2044,12 @@ async function submitBootForm() {
   if (!checkRange('Thickness LM', thickLM, 0.5, 20)) return;
   if (!checkRange('Thickness I', thickI, 0.5, 20)) return;
 
-  if (!confirm('Register boot ' + bootId + ' (' + brandFull + ' ' + modelAbbr + ', size ' + size + ')?')) return;
+  var confirmMsg = isEdit
+    ? 'You are EDITING already-registered data for ' + bootId + '. Save changes?'
+    : 'Register boot ' + bootId + ' (' + brandFull + ' ' + modelAbbr + ', size ' + size + ')?';
+  if (!confirm(confirmMsg)) return;
 
-  showLoading('Registering boot...');
+  showLoading(isEdit ? 'Saving changes...' : 'Registering boot...');
 
   var photos = await collectPhotos([
     { id: 'b-photo-lat', label: 'lateral' },
@@ -1939,7 +2071,8 @@ async function submitBootForm() {
     photos: photos
   };
 
-  apiPost('registerBoot', data)
+  var actionName = isEdit ? 'updateBoot' : 'registerBoot';
+  apiPost(actionName, data)
     .then(function(result) {
       hideLoading();
       if (result.success) {
@@ -1952,7 +2085,7 @@ async function submitBootForm() {
     })
     .catch(function(err) {
       hideLoading();
-      var queued = queueSubmission('registerBoot', data);
+      var queued = queueSubmission(actionName, data);
       if (queued) {
         showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
         clearBootForm();
@@ -1974,6 +2107,12 @@ function clearBootForm() {
   ['prev-b-lat','prev-b-label'].forEach(function(id) {
     document.getElementById(id).classList.remove('visible');
   });
+  document.getElementById('b-abbr').disabled = false;
+  document.getElementById('b-model-abbr').disabled = false;
+  document.getElementById('b-size').disabled = false;
+  document.getElementById('btn-submit-boot').textContent = 'Register Boot';
+  document.getElementById('edit-boot-select').value = '';
+  editingBootId = null;
   formDirty.boot = false;
   updateBootId();
 }
@@ -1996,7 +2135,8 @@ async function submitSnakeForm() {
   }
 
   var padded = String(parseInt(num)).padStart(2, '0');
-  var snakeId = species + '-' + age + '-' + padded;
+  var isEdit = !!editingSnakeId;
+  var snakeId = editingSnakeId || (species + '-' + age + '-' + padded);
 
   var tl = parseFloat(document.getElementById('s-tl').value) || '';
   var svl = parseFloat(document.getElementById('s-svl').value) || '';
@@ -2013,9 +2153,12 @@ async function submitSnakeForm() {
   if (!checkRange('Fang L', flL, 1, 30)) return;
   if (!checkRange('Fang R', flR, 1, 30)) return;
 
-  if (!confirm('Register snake ' + snakeId + '?')) return;
+  var confirmMsg = isEdit
+    ? 'You are EDITING already-registered data for ' + snakeId + '. Save changes?'
+    : 'Register snake ' + snakeId + '?';
+  if (!confirm(confirmMsg)) return;
 
-  showLoading('Registering snake...');
+  showLoading(isEdit ? 'Saving changes...' : 'Registering snake...');
 
   var data = {
     snakeId: snakeId,
@@ -2031,7 +2174,8 @@ async function submitSnakeForm() {
     recordedBy: getRecorderName()
   };
 
-  apiPost('registerSnake', data)
+  var actionName = isEdit ? 'updateSnake' : 'registerSnake';
+  apiPost(actionName, data)
     .then(function(result) {
       hideLoading();
       if (result.success) {
@@ -2044,7 +2188,7 @@ async function submitSnakeForm() {
     })
     .catch(function(err) {
       hideLoading();
-      var queued = queueSubmission('registerSnake', data);
+      var queued = queueSubmission(actionName, data);
       if (queued) {
         showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
         clearSnakeForm();
@@ -2062,6 +2206,12 @@ function clearSnakeForm() {
   document.getElementById('s-sex').value = 'U';
   document.getElementById('s-condition').value = 'Good';
   document.getElementById('s-lastfeed').value = '';
+  document.getElementById('s-species').disabled = false;
+  document.getElementById('s-age').disabled = false;
+  document.getElementById('s-num').disabled = false;
+  document.getElementById('btn-submit-snake').textContent = 'Register Snake';
+  document.getElementById('edit-snake-select').value = '';
+  editingSnakeId = null;
   formDirty.snake = false;
   resetSnakeInOut();
   updateSnakeId();

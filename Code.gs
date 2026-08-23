@@ -52,6 +52,8 @@ function doPost(e) {
     if (action === 'registerBoot') result = registerBoot(data);
     else if (action === 'registerSnake') result = registerSnake(data);
     else if (action === 'submitTrial') result = submitTrial(data);
+    else if (action === 'updateBoot') result = updateBoot(data);
+    else if (action === 'updateSnake') result = updateSnake(data);
     else result = { success: false, message: 'Unknown action: ' + action };
   } catch (err) {
     result = { success: false, message: friendlyError_(err) };
@@ -99,7 +101,8 @@ var BOOT_HEADERS = [
   'Boot_ID','Brand_Abbr','Brand_Full','Model','Boot_Size','Session',
   'IS_Standard','Mfg_Date','Batch_No',
   'Thick_T_mm','Thick_LM_mm','Thick_I_mm',
-  'Photo_Links','Registered_Date','Recorded_By','Model_Abbr'
+  'Photo_Links','Registered_Date','Recorded_By','Model_Abbr',
+  'Last_Edited_By','Last_Edited_Date'
 ];
 
 var SNAKE_HEADERS = [
@@ -107,7 +110,8 @@ var SNAKE_HEADERS = [
   'TL_mm','SVL_mm','HL_mm','HW_mm','BM_g',
   'FL_L_mm','FL_R_mm','Dentition',
   'Body_Condition','Last_Feed_Date','Registered_Date',
-  'Iso_In_Time','Iso_Out_Time','Time_To_Unconscious_Sec','Recorded_By'
+  'Iso_In_Time','Iso_Out_Time','Time_To_Unconscious_Sec','Recorded_By',
+  'Last_Edited_By','Last_Edited_Date'
 ];
 
 // Single source of truth for species metadata — used to build both the name
@@ -180,8 +184,9 @@ function getBoots() {
     var r = data[i];
     result.push({
       bootId: r[0], brandAbbr: r[1], brandFull: r[2], model: r[3],
-      size: r[4], session: r[5], isStandard: r[6],
-      thickT: r[9], thickLM: r[10], thickI: r[11]
+      size: r[4], session: r[5], isStandard: r[6], mfgDate: r[7], batch: r[8],
+      thickT: r[9], thickLM: r[10], thickI: r[11], photoLinks: r[12],
+      recordedBy: r[14], modelAbbr: r[15]
     });
   }
   return result;
@@ -198,7 +203,9 @@ function getSnakes() {
       snakeId: r[0], speciesCode: r[1], commonName: r[2], ageClass: r[3],
       sex: r[4], tl: r[5], svl: r[6], hl: r[7], hw: r[8], bm: r[9],
       flL: r[10], flR: r[11], dentition: r[12], bodyCondition: r[13],
-      isoInTime: r[16], isoOutTime: r[17], timeToUnconsciousSec: r[18]
+      lastFeedDate: r[14],
+      isoInTime: r[16], isoOutTime: r[17], timeToUnconsciousSec: r[18],
+      recordedBy: r[19]
     });
   }
   return result;
@@ -317,10 +324,65 @@ function registerBoot(data) {
       data.bootId, data.brandAbbr, sanitizeCell_(data.brandFull), sanitizeCell_(data.model),
       data.size, data.session, sanitizeCell_(data.isStandard), sanitizeCell_(data.mfgDate), sanitizeCell_(data.batch),
       data.thickT, data.thickLM, data.thickI,
-      photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy), data.modelAbbr
+      photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy), data.modelAbbr,
+      '', ''
     ]);
 
     return { success: true, message: 'Boot registered: ' + data.bootId };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Boot_ID, Brand_Abbr, Boot_Size, Session, and Model_Abbr are immutable on
+// edit (the front-end disables those fields) since they compose the ID —
+// changing them would mean renaming the row's key, not editing its data.
+// Photos are only touched if new ones are attached, so editing other fields
+// never wipes out previously uploaded photo links.
+function updateBoot(data) {
+  var missing = missingFields_(data, [
+    { key: 'bootId', label: 'Boot ID' },
+    { key: 'brandFull', label: 'Brand Name' }
+  ]);
+  if (missing.length) {
+    return { success: false, message: 'Missing: ' + missing.join(', ') };
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: 'Server busy — please try again in a moment.' };
+  }
+  try {
+    var sheet = getOrCreateSheet_('Boots', BOOT_HEADERS);
+    var values = sheet.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < values.length; i++) {
+      if (values[i][0] === data.bootId) { rowIdx = i; break; }
+    }
+    if (rowIdx === -1) {
+      return { success: false, message: 'Boot ID not found (may have been removed): ' + data.bootId };
+    }
+
+    var newRow = values[rowIdx].slice();
+    while (newRow.length < BOOT_HEADERS.length) newRow.push('');
+
+    if (data.photos && data.photos.length) {
+      var uploaded = uploadPhotos_(data.photos, data.bootId);
+      if (uploaded.length) newRow[12] = uploaded.join('\n');
+    }
+    newRow[2] = sanitizeCell_(data.brandFull);
+    newRow[3] = sanitizeCell_(data.model);
+    newRow[6] = sanitizeCell_(data.isStandard);
+    newRow[7] = sanitizeCell_(data.mfgDate);
+    newRow[8] = sanitizeCell_(data.batch);
+    newRow[9] = data.thickT;
+    newRow[10] = data.thickLM;
+    newRow[11] = data.thickI;
+    newRow[16] = sanitizeCell_(data.recordedBy);
+    newRow[17] = todayDateStr_();
+
+    sheet.getRange(rowIdx + 1, 1, 1, BOOT_HEADERS.length).setValues([newRow]);
+    return { success: true, message: 'Boot updated: ' + data.bootId };
   } finally {
     lock.releaseLock();
   }
@@ -363,10 +425,62 @@ function registerSnake(data) {
       data.isoInTime ? "'" + data.isoInTime : '',
       data.isoOutTime ? "'" + data.isoOutTime : '',
       data.timeToUnconsciousSec || '',
-      sanitizeCell_(data.recordedBy)
+      sanitizeCell_(data.recordedBy),
+      '', ''
     ]);
 
     return { success: true, message: 'Snake registered: ' + data.snakeId };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Snake_ID, Species_Code, and Age_Class are immutable on edit (the front-end
+// disables those fields) since they compose the ID.
+function updateSnake(data) {
+  var missing = missingFields_(data, [
+    { key: 'snakeId', label: 'Snake ID' }
+  ]);
+  if (missing.length) {
+    return { success: false, message: 'Missing: ' + missing.join(', ') };
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: 'Server busy — please try again in a moment.' };
+  }
+  try {
+    var sheet = getOrCreateSheet_('Snakes', SNAKE_HEADERS);
+    var values = sheet.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < values.length; i++) {
+      if (values[i][0] === data.snakeId) { rowIdx = i; break; }
+    }
+    if (rowIdx === -1) {
+      return { success: false, message: 'Snake ID not found (may have been removed): ' + data.snakeId };
+    }
+
+    var newRow = values[rowIdx].slice();
+    while (newRow.length < SNAKE_HEADERS.length) newRow.push('');
+
+    newRow[4] = data.sex;
+    newRow[5] = data.tl;
+    newRow[6] = data.svl;
+    newRow[7] = data.hl;
+    newRow[8] = data.hw;
+    newRow[9] = data.bm;
+    newRow[10] = data.flL;
+    newRow[11] = data.flR;
+    newRow[13] = data.bodyCondition;
+    newRow[14] = sanitizeCell_(data.lastFeedDate);
+    if (data.isoInTime) newRow[16] = "'" + data.isoInTime;
+    if (data.isoOutTime) newRow[17] = "'" + data.isoOutTime;
+    if (data.timeToUnconsciousSec) newRow[18] = data.timeToUnconsciousSec;
+    newRow[20] = sanitizeCell_(data.recordedBy);
+    newRow[21] = todayDateStr_();
+
+    sheet.getRange(rowIdx + 1, 1, 1, SNAKE_HEADERS.length).setValues([newRow]);
+    return { success: true, message: 'Snake updated: ' + data.snakeId };
   } finally {
     lock.releaseLock();
   }
