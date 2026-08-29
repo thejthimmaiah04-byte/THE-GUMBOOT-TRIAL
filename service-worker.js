@@ -1,5 +1,6 @@
-var CACHE_NAME = 'gumboot-trial-v4';
-var ASSETS = ['./', './index.html', './manifest.json', './app-icon.png', './app-icon-192.png'];
+var CACHE_NAME = 'gumboot-trial-v5';
+var ASSETS = ['./', './index.html', './manifest.json', './app-icon.png', './app-icon-192.png',
+  './gumboot.jpg', './TLT Logo - White.png'];
 
 self.addEventListener('install', function(event) {
   event.waitUntil(
