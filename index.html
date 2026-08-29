@@ -260,6 +260,57 @@
       font-size: 12px; color: var(--text-light); margin-bottom: 10px;
     }
 
+    /* --- Results: trials table --- */
+    .results-table-wrap { overflow-x: auto; }
+    .results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .results-table th, .results-table td {
+      padding: 8px 6px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    .results-table th {
+      color: var(--text-mid); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    /* --- Results: analytics --- */
+    .stat-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .stat-tile { flex: 1 1 40%; background: var(--bg); border-radius: 8px; padding: 12px 10px; text-align: center; }
+    .stat-tile .stat-value { font-size: 22px; font-weight: 800; color: var(--green); line-height: 1.2; }
+    .stat-tile .stat-value.bad { color: var(--danger); }
+    .stat-tile .stat-label {
+      font-size: 10.5px; color: var(--text-mid); margin-top: 3px;
+      text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .stat-caption { font-size: 11.5px; color: var(--text-light); margin-top: 10px; line-height: 1.5; }
+
+    .donut-wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: center; padding: 4px 0 8px; }
+    .donut { width: 138px; height: 138px; border-radius: 50%; flex-shrink: 0; position: relative; }
+    .donut .donut-hole {
+      position: absolute; inset: 19%; background: var(--card); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; flex-direction: column;
+    }
+    .donut .donut-hole .dh-value { font-size: 19px; font-weight: 800; color: var(--text); }
+    .donut .donut-hole .dh-label { font-size: 8.5px; color: var(--text-mid); text-transform: uppercase; letter-spacing: 0.3px; }
+    .legend { display: flex; flex-direction: column; gap: 7px; font-size: 12.5px; min-width: 150px; }
+    .legend-item { display: flex; align-items: center; gap: 7px; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+    .legend-item .lg-count { color: var(--text-mid); margin-left: auto; padding-left: 10px; }
+
+    .bar-row { margin-top: 12px; }
+    .bar-row:first-child { margin-top: 0; }
+    .bar-row .bar-label-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; margin-bottom: 4px; gap: 8px; }
+    .bar-row .bl-name { font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-row .bl-val { color: var(--text-mid); flex-shrink: 0; font-size: 12px; }
+    .bar-track { height: 11px; background: var(--bg); border-radius: 6px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 6px; }
+
+    .trend-row { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
+    .trend-row:first-child { margin-top: 0; }
+    .trend-month { font-size: 11px; color: var(--text-mid); width: 56px; flex-shrink: 0; }
+    .trend-bar-track {
+      flex: 1; height: 18px; border-radius: 4px; overflow: hidden; display: flex; background: var(--bg);
+    }
+    .trend-bar-seg { height: 100%; }
+    .trend-count { font-size: 11px; color: var(--text-mid); width: 44px; text-align: right; flex-shrink: 0; }
+
     /* --- Home tiles --- */
     .tile-grid {
       display: flex; flex-direction: column; gap: 14px;
@@ -533,6 +584,9 @@
     </button>
     <button class="tile tile-trial" onclick="switchPage('trial')">
       <span>Trial</span>
+    </button>
+    <button class="tile tile-results" onclick="switchPage('results')">
+      <span>Results</span>
     </button>
   </div>
 </div>
@@ -1039,6 +1093,33 @@
   </div>
 </div>
 
+<!-- ==================== PAGE: RESULTS ==================== -->
+<div id="page-results" class="page">
+  <div class="tabs">
+    <button id="tab-btn-res-trials" class="tab-btn active" onclick="switchResultsTab('res-trials')">All Conducted Trials</button>
+    <button id="tab-btn-res-analytics" class="tab-btn" onclick="switchResultsTab('res-analytics')">Analytics</button>
+  </div>
+
+  <div id="tab-content-res-trials" class="tab-content active">
+    <div class="card">
+      <div class="card-title">All Conducted Trials</div>
+      <div class="reg-list-count" id="results-trials-count"></div>
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr><th>Date</th><th>Snake ID</th><th>Boot ID</th><th>Outcome</th></tr>
+          </thead>
+          <tbody id="results-trials-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="tab-content-res-analytics" class="tab-content">
+    <div id="results-analytics-body"></div>
+  </div>
+</div>
+
 <!-- ==================== BOTTOM NAV ==================== -->
 <!-- ==================== LOADING OVERLAY ==================== -->
 <div id="loading">
@@ -1337,10 +1418,11 @@ function renderPage(name) {
   document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   document.getElementById('page-' + name).classList.add('active');
   var titles = { home: 'Home', checklist: 'Checklist', trial: 'Trial Log & Record', boot: 'Register Boot', snake: 'Register Snake',
-    'boot-list': 'Registered Boots', 'snake-list': 'Registered Snakes' };
+    'boot-list': 'Registered Boots', 'snake-list': 'Registered Snakes', results: 'Results' };
   document.getElementById('header-sub').textContent = titles[name] || '';
   if (name === 'boot-list') renderBootList();
   if (name === 'snake-list') renderSnakeList();
+  if (name === 'results') { renderResultsTrialsTable(); renderResultsAnalytics(); }
   window.scrollTo(0, 0);
 }
 
@@ -1437,6 +1519,10 @@ function loadTrialLog() {
     });
     renderCalendar();
     renderTrialSummary();
+    if (document.getElementById('page-results').classList.contains('active')) {
+      renderResultsTrialsTable();
+      renderResultsAnalytics();
+    }
   }).catch(function(e) {
     console.error('Failed to load trial log:', e);
   });
@@ -1601,6 +1687,191 @@ function renderTrialSummary() {
   });
   html += '</div>';
   listEl.innerHTML = html;
+}
+
+// ----- Results (All Conducted Trials + Analytics) -----
+// Outcome codes are mutually exclusive per trial (single-select on the form):
+//   P     = puncture (boot failed)             -> counted as a failure
+//   NP / NP-M / VOB = boot held, no puncture    -> counted as protective
+//   NP-R  = snake never struck (non-reactive)   -> excluded from rate math
+//   INC   = incomplete trial                    -> excluded from rate math
+// Rates below are always "of trials where the snake actually struck and the
+// trial was completed" — NP-R/INC would otherwise silently dilute the rate
+// with trials that say nothing about boot performance.
+var OUTCOME_META = {
+  'P':    { label: 'Puncture',                 color: 'var(--danger)' },
+  'NP':   { label: 'No puncture',              color: 'var(--green)' },
+  'NP-M': { label: 'No puncture (fang marks)', color: 'var(--amber)' },
+  'NP-R': { label: 'Non-reactive',             color: 'var(--text-light)' },
+  'VOB':  { label: 'Venom on boot',            color: '#8e44ad' },
+  'INC':  { label: 'Incomplete',               color: '#999' }
+};
+var RESULTS_SUCCESS_OUTCOMES = ['NP', 'NP-M', 'VOB'];
+var RESULTS_FAILURE_OUTCOME = 'P';
+var RESULTS_EXCLUDED_OUTCOMES = ['NP-R', 'INC'];
+var SPECIES_NAMES_ = { DR: "Russell's viper", NN: 'Spectacled cobra', BC: 'Common krait', EC: 'Saw-scaled viper' };
+
+function switchResultsTab(tabId) {
+  document.querySelectorAll('#page-results .tab-btn').forEach(function(btn) { btn.classList.remove('active'); });
+  document.querySelectorAll('#page-results .tab-content').forEach(function(content) { content.classList.remove('active'); });
+  document.getElementById('tab-btn-' + tabId).classList.add('active');
+  document.getElementById('tab-content-' + tabId).classList.add('active');
+}
+
+function renderResultsTrialsTable() {
+  var tbody = document.getElementById('results-trials-tbody');
+  var countEl = document.getElementById('results-trials-count');
+  if (!tbody) return;
+  var rows = allTrialsCache.slice().sort(function(a, b) {
+    return (b.date || '').localeCompare(a.date || '') || (b.trialId || '').localeCompare(a.trialId || '');
+  });
+  countEl.textContent = rows.length + ' trial' + (rows.length === 1 ? '' : 's') + ' conducted';
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state">No trials recorded yet.</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(function(t) {
+    var badgeClass = (t.outcome || '').replace(/[^A-Z-]/g, '');
+    return '<tr>' +
+      '<td>' + escapeHtml_(t.date) + '</td>' +
+      '<td>' + escapeHtml_(t.snakeId) + '</td>' +
+      '<td>' + escapeHtml_(t.bootId) + '</td>' +
+      '<td><span class="outcome-badge ' + badgeClass + '">' + escapeHtml_(t.outcome || '-') + '</span></td>' +
+    '</tr>';
+  }).join('');
+}
+
+// Groups trials by a key, computing a puncture-rate per group over trials
+// that count toward the rate (excludes NP-R/INC per group, same as the
+// headline stats) — so e.g. a boot model that's mostly been tested on
+// non-reactive snakes doesn't look artificially safe.
+function groupPunctureRate_(trials, keyFn, labelFn) {
+  var groups = {};
+  trials.forEach(function(t) {
+    if (RESULTS_EXCLUDED_OUTCOMES.indexOf(t.outcome) !== -1) return;
+    var key = keyFn(t);
+    if (!key) return;
+    if (!groups[key]) groups[key] = { key: key, label: labelFn(t), total: 0, punctures: 0 };
+    groups[key].total++;
+    if (t.outcome === RESULTS_FAILURE_OUTCOME) groups[key].punctures++;
+  });
+  return Object.keys(groups).map(function(k) {
+    var g = groups[k];
+    g.rate = g.total ? Math.round((g.punctures / g.total) * 100) : 0;
+    return g;
+  }).sort(function(a, b) { return b.rate - a.rate || b.total - a.total; });
+}
+
+function buildBarChartHtml_(rows, emptyMsg) {
+  if (rows.length === 0) return '<div class="empty-state">' + emptyMsg + '</div>';
+  return rows.map(function(g) {
+    var smallSample = g.total < 5 ? ' <span class="small-sample-note">(n=' + g.total + ', small sample)</span>' : ' <span class="bl-val">(n=' + g.total + ')</span>';
+    return '<div class="bar-row">' +
+      '<div class="bar-label-row"><span class="bl-name">' + escapeHtml_(g.label) + '</span>' +
+        '<span class="bl-val">' + g.rate + '% puncture' + smallSample + '</span></div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:' + g.rate + '%; background:var(--danger)"></div></div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderResultsAnalytics() {
+  var el = document.getElementById('results-analytics-body');
+  if (!el) return;
+  var trials = allTrialsCache;
+  var total = trials.length;
+
+  if (total === 0) {
+    el.innerHTML = '<div class="card"><div class="empty-state">No trials recorded yet — analytics will appear once trials are logged.</div></div>';
+    return;
+  }
+
+  var counts = {};
+  OUTCOME_ORDER.forEach(function(o) { counts[o] = 0; });
+  trials.forEach(function(t) { counts[t.outcome] = (counts[t.outcome] || 0) + 1; });
+
+  var successCount = RESULTS_SUCCESS_OUTCOMES.reduce(function(s, o) { return s + counts[o]; }, 0);
+  var failureCount = counts[RESULTS_FAILURE_OUTCOME];
+  var excludedCount = RESULTS_EXCLUDED_OUTCOMES.reduce(function(s, o) { return s + counts[o]; }, 0);
+  var validCount = successCount + failureCount;
+  var protectionRate = validCount ? Math.round((successCount / validCount) * 100) : null;
+  var punctureRate = validCount ? Math.round((failureCount / validCount) * 100) : null;
+
+  // ----- Stat row -----
+  var statsHtml = '<div class="card"><div class="card-title">At a Glance</div><div class="stat-row">' +
+    '<div class="stat-tile"><div class="stat-value">' + total + '</div><div class="stat-label">Total Trials</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + (protectionRate === null ? '—' : protectionRate + '%') + '</div><div class="stat-label">Protection Rate</div></div>' +
+    '<div class="stat-tile"><div class="stat-value' + (punctureRate && punctureRate > 30 ? ' bad' : '') + '">' + (punctureRate === null ? '—' : punctureRate + '%') + '</div><div class="stat-label">Puncture Rate</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + excludedCount + '</div><div class="stat-label">Excluded (N/A)</div></div>' +
+    '</div><div class="stat-caption">Protection &amp; puncture rate are of the ' + validCount + ' trial' + (validCount === 1 ? '' : 's') +
+    ' where the snake struck and the trial completed — non-reactive and incomplete trials (' + excludedCount + ') are excluded so they don\'t distort how the boots actually performed.</div></div>';
+
+  // ----- Outcome distribution donut -----
+  var gradientParts = [];
+  var cursor = 0;
+  var legendHtml = '';
+  OUTCOME_ORDER.forEach(function(o) {
+    if (!counts[o]) return;
+    var pct = (counts[o] / total) * 100;
+    var meta = OUTCOME_META[o];
+    gradientParts.push(meta.color + ' ' + cursor + '% ' + (cursor + pct) + '%');
+    cursor += pct;
+    legendHtml += '<div class="legend-item"><span class="legend-dot" style="background:' + meta.color + '"></span>' +
+      '<span>' + o + ' &mdash; ' + meta.label + '</span><span class="lg-count">' + counts[o] + '</span></div>';
+  });
+  var donutHtml = '<div class="card"><div class="card-title">Outcome Distribution</div>' +
+    '<div class="donut-wrap">' +
+      '<div class="donut" style="background:conic-gradient(' + gradientParts.join(', ') + ')">' +
+        '<div class="donut-hole"><div class="dh-value">' + total + '</div><div class="dh-label">Trials</div></div>' +
+      '</div>' +
+      '<div class="legend">' + legendHtml + '</div>' +
+    '</div></div>';
+
+  // ----- Puncture rate by boot -----
+  var byBoot = groupPunctureRate_(trials, function(t) { return t.bootId; }, function(t) {
+    return t.bootId + (t.bootBrand ? ' (' + t.bootBrand + ')' : '');
+  });
+  var bootHtml = '<div class="card"><div class="card-title">Puncture Rate by Boot</div>' +
+    buildBarChartHtml_(byBoot, 'No completed trials with a struck outcome yet.') + '</div>';
+
+  // ----- Puncture rate by species -----
+  var bySpecies = groupPunctureRate_(trials, function(t) { return t.speciesCode; }, function(t) {
+    return (SPECIES_NAMES_[t.speciesCode] || t.speciesCode) + ' (' + t.speciesCode + ')';
+  });
+  var speciesHtml = '<div class="card"><div class="card-title">Puncture Rate by Species</div>' +
+    buildBarChartHtml_(bySpecies, 'No completed trials with a struck outcome yet.') + '</div>';
+
+  // ----- Trend over time (direction of the trials, month by month) -----
+  var monthGroups = {};
+  trials.forEach(function(t) {
+    if (!t.date) return;
+    var month = t.date.slice(0, 7); // yyyy-MM
+    if (!monthGroups[month]) {
+      monthGroups[month] = { month: month, total: 0, counts: {} };
+      OUTCOME_ORDER.forEach(function(o) { monthGroups[month].counts[o] = 0; });
+    }
+    monthGroups[month].total++;
+    monthGroups[month].counts[t.outcome] = (monthGroups[month].counts[t.outcome] || 0) + 1;
+  });
+  var months = Object.keys(monthGroups).sort();
+  var trendRowsHtml = months.map(function(m) {
+    var g = monthGroups[m];
+    var segHtml = OUTCOME_ORDER.map(function(o) {
+      if (!g.counts[o]) return '';
+      var w = (g.counts[o] / g.total) * 100;
+      return '<div class="trend-bar-seg" style="width:' + w + '%; background:' + OUTCOME_META[o].color + '"></div>';
+    }).join('');
+    var label = new Date(m + '-01').toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+    return '<div class="trend-row"><div class="trend-month">' + label + '</div>' +
+      '<div class="trend-bar-track">' + segHtml + '</div>' +
+      '<div class="trend-count">' + g.total + '</div></div>';
+  }).join('');
+  var trendHtml = '<div class="card"><div class="card-title">Trend Over Time</div>' +
+    (months.length < 2
+      ? '<div class="empty-state">Need trials across at least two months to show a trend.</div>'
+      : trendRowsHtml + '<div class="stat-caption">Each bar is one month\'s full outcome mix (see legend above) — a bar getting greener/less red over time means the boots are holding up better as trials continue.</div>') +
+    '</div>';
+
+  el.innerHTML = statsHtml + donutHtml + bootHtml + speciesHtml + trendHtml;
 }
 
 // ----- Load registries -----
