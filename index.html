@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" href="./app-icon.png">
   <link rel="apple-touch-icon" href="./app-icon.png">
@@ -283,19 +283,19 @@
     .home-btn {
       background: none; border: none; color: #fff; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      width: 32px; height: 32px; opacity: 0.9; flex-shrink: 0;
+      width: 44px; height: 44px; opacity: 0.9; flex-shrink: 0;
     }
     .home-btn svg { width: 20px; height: 20px; }
-    header .header-right { display: flex; align-items: center; gap: 10px; }
+    header .header-right { display: flex; align-items: center; gap: 2px; }
     .recorder-btn {
       background: none; border: none; color: #fff; cursor: pointer;
       display: flex; align-items: center; justify-content: center;
-      width: 32px; height: 32px; opacity: 0.9; flex-shrink: 0; position: relative;
+      width: 44px; height: 44px; opacity: 0.9; flex-shrink: 0; position: relative;
     }
     .recorder-btn svg { width: 19px; height: 19px; }
     .recorder-btn.unset svg { opacity: 0.5; }
     .pending-badge {
-      position: absolute; top: -2px; right: -2px;
+      position: absolute; top: 4px; right: 4px;
       background: var(--amber); color: #fff; font-size: 9px; font-weight: 700;
       min-width: 14px; height: 14px; border-radius: 7px; padding: 0 3px;
       display: flex; align-items: center; justify-content: center; line-height: 1;
@@ -1226,10 +1226,28 @@ function setPendingQueue(q) {
   }
 }
 
+// localStorage caps out around 5-10MB per origin. Queued photos (stored as
+// base64) are the only thing likely to approach that, so warn early — well
+// before setPendingQueue's own try/catch would hit an actual quota error —
+// so a researcher stacking up offline trials with photos gets a chance to
+// find signal and sync before anything is at risk of failing to queue.
+var QUEUE_WARN_BYTES = 3 * 1024 * 1024;
+var queueWarned = false;
+
 function queueSubmission(action, data) {
   var q = getPendingQueue();
   q.push({ action: action, data: data, ts: Date.now() });
-  return setPendingQueue(q);
+  var ok = setPendingQueue(q);
+  if (ok) {
+    var size = JSON.stringify(q).length;
+    if (size > QUEUE_WARN_BYTES && !queueWarned) {
+      queueWarned = true;
+      showToast('Offline queue is getting large (photos take space) — connect to Wi-Fi/data soon to sync before it fills up.', 'warn');
+    }
+  } else {
+    queueWarned = false;
+  }
+  return ok;
 }
 
 function updatePendingBadge() {
@@ -1238,6 +1256,7 @@ function updatePendingBadge() {
   var n = getPendingQueue().length;
   el.style.display = n > 0 ? 'flex' : 'none';
   el.textContent = n;
+  if (n === 0) queueWarned = false;
 }
 
 var flushingQueue = false;
@@ -2074,7 +2093,7 @@ async function submitTrialForm() {
         showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
         clearTrialForm();
       } else {
-        showToast('Error: ' + (err.message || err) + ' — please retry once online', 'error');
+        showToast('Could not queue offline (device storage full) — this entry was NOT saved. Stay on this page and retry once online.', 'error');
       }
     });
 }
@@ -2226,7 +2245,7 @@ async function submitBootForm() {
         showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
         clearBootForm();
       } else {
-        showToast('Error: ' + (err.message || err) + ' — please retry once online', 'error');
+        showToast('Could not queue offline (device storage full) — this entry was NOT saved. Stay on this page and retry once online.', 'error');
       }
     });
 }
@@ -2329,7 +2348,7 @@ async function submitSnakeForm() {
         showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
         clearSnakeForm();
       } else {
-        showToast('Error: ' + (err.message || err) + ' — please retry once online', 'error');
+        showToast('Could not queue offline (device storage full) — this entry was NOT saved. Stay on this page and retry once online.', 'error');
       }
     });
 }

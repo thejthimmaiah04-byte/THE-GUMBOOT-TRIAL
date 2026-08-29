@@ -1,4 +1,4 @@
-var CACHE_NAME = 'gumboot-trial-v5';
+var CACHE_NAME = 'gumboot-trial-v6';
 var ASSETS = ['./', './index.html', './manifest.json', './app-icon.png', './app-icon-192.png',
   './gumboot.jpg', './TLT Logo - White.png'];
 
@@ -7,9 +7,15 @@ self.addEventListener('install', function(event) {
     caches.open(CACHE_NAME).then(function(cache) {
       // cache: 'reload' bypasses the browser's HTTP cache so installs always
       // pick up the real latest files, not a stale cached copy of them.
-      return Promise.all(ASSETS.map(function(url) {
+      // allSettled (not all) so one flaky asset on a patchy connection
+      // doesn't fail the whole install and leave offline caching disabled.
+      return Promise.allSettled(ASSETS.map(function(url) {
         return fetch(url, { cache: 'reload' }).then(function(res) { return cache.put(url, res); });
-      }));
+      })).then(function(results) {
+        results.forEach(function(r, i) {
+          if (r.status === 'rejected') console.error('Failed to cache', ASSETS[i], r.reason);
+        });
+      });
     })
   );
   self.skipWaiting();
