@@ -1774,6 +1774,34 @@ function buildBarChartHtml_(rows, emptyMsg) {
   }).join('');
 }
 
+// Plain usage-volume grouping (no outcome filtering — every trial counts,
+// since even an incomplete/non-reactive trial still means that boot or
+// individual was actually used that day).
+function groupTrialCount_(trials, keyFn, labelFn) {
+  var groups = {};
+  trials.forEach(function(t) {
+    var key = keyFn(t);
+    if (!key) return;
+    if (!groups[key]) groups[key] = { key: key, label: labelFn(t), total: 0 };
+    groups[key].total++;
+  });
+  return Object.keys(groups).map(function(k) { return groups[k]; })
+    .sort(function(a, b) { return b.total - a.total; });
+}
+
+function buildCountBarChartHtml_(rows, emptyMsg, barColor, suffixFn) {
+  if (rows.length === 0) return '<div class="empty-state">' + emptyMsg + '</div>';
+  var max = rows.reduce(function(m, r) { return Math.max(m, r.total); }, 0) || 1;
+  return rows.map(function(g) {
+    var pct = Math.round((g.total / max) * 100);
+    return '<div class="bar-row">' +
+      '<div class="bar-label-row"><span class="bl-name">' + escapeHtml_(g.label) + '</span>' +
+        '<span class="bl-val">' + g.total + suffixFn(g.total) + '</span></div>' +
+      '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%; background:' + barColor + '"></div></div>' +
+    '</div>';
+  }).join('');
+}
+
 function renderResultsAnalytics() {
   var el = document.getElementById('results-analytics-body');
   if (!el) return;
@@ -1826,6 +1854,24 @@ function renderResultsAnalytics() {
       '<div class="legend">' + legendHtml + '</div>' +
     '</div></div>';
 
+  // ----- Trials by boot brand & type (volume, not outcome) -----
+  // Grouped by brand+model rather than exact Boot_ID, so e.g. two same-model
+  // boots in different sizes are counted together as one "type".
+  var byBootType = groupTrialCount_(trials, function(t) {
+    var b = bootsCache.find(function(x) { return x.bootId === t.bootId; });
+    var brand = b ? b.brandFull : (t.bootBrand || 'Unknown brand');
+    var model = b ? (b.model || '') : '';
+    return (brand + '|' + model).toLowerCase();
+  }, function(t) {
+    var b = bootsCache.find(function(x) { return x.bootId === t.bootId; });
+    var brand = b ? b.brandFull : (t.bootBrand || 'Unknown brand');
+    var model = b && b.model ? b.model : '';
+    return brand + (model ? ' — ' + model : '');
+  });
+  var bootTypeHtml = '<div class="card"><div class="card-title">Trials by Boot Brand &amp; Type</div>' +
+    buildCountBarChartHtml_(byBootType, 'No trials recorded yet.', 'var(--green)', function(n) { return ' trial' + (n === 1 ? '' : 's'); }) +
+    '</div>';
+
   // ----- Puncture rate by boot -----
   var byBoot = groupPunctureRate_(trials, function(t) { return t.bootId; }, function(t) {
     return t.bootId + (t.bootBrand ? ' (' + t.bootBrand + ')' : '');
@@ -1839,6 +1885,19 @@ function renderResultsAnalytics() {
   });
   var speciesHtml = '<div class="card"><div class="card-title">Puncture Rate by Species</div>' +
     buildBarChartHtml_(bySpecies, 'No completed trials with a struck outcome yet.') + '</div>';
+
+  // ----- Trials per individual (session count) -----
+  // "Session" here = how many trials this specific individual snake has been
+  // used in to date — a running usage count per animal, not a field-visit
+  // number. Also useful as a welfare/habituation flag: an individual with a
+  // high session count relative to others has been reused a lot.
+  var byIndividual = groupTrialCount_(trials, function(t) { return t.snakeId; }, function(t) {
+    return t.snakeId + (t.speciesCode ? ' (' + (SPECIES_NAMES_[t.speciesCode] || t.speciesCode) + ')' : '');
+  });
+  var individualHtml = '<div class="card"><div class="card-title">Trials per Individual (Session Count)</div>' +
+    buildCountBarChartHtml_(byIndividual, 'No trials recorded yet.', 'var(--amber)', function(n) { return ' session' + (n === 1 ? '' : 's'); }) +
+    '<div class="stat-caption">Session count = total trials that individual snake has been used in to date — a high count relative to others may be worth flagging for animal welfare/habituation reasons.</div>' +
+    '</div>';
 
   // ----- Trend over time (direction of the trials, month by month) -----
   var monthGroups = {};
@@ -1871,7 +1930,7 @@ function renderResultsAnalytics() {
       : trendRowsHtml + '<div class="stat-caption">Each bar is one month\'s full outcome mix (see legend above) — a bar getting greener/less red over time means the boots are holding up better as trials continue.</div>') +
     '</div>';
 
-  el.innerHTML = statsHtml + donutHtml + bootHtml + speciesHtml + trendHtml;
+  el.innerHTML = statsHtml + donutHtml + bootTypeHtml + bootHtml + speciesHtml + individualHtml + trendHtml;
 }
 
 // ----- Load registries -----
