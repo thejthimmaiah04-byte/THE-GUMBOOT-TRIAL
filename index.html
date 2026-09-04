@@ -165,6 +165,7 @@
       margin-left: 8px; text-decoration: underline; display: none;
     }
     .photo-slot .remove-photo.visible { display: inline; }
+    .multi-photo-count { font-size: 12px; color: var(--text-mid); margin-top: 6px; }
 
     /* --- Buttons --- */
     .btn {
@@ -849,9 +850,9 @@
       <img class="preview" id="prev-boot">
     </div>
     <div class="photo-slot">
-      <label>Additional Photo (optional)</label>
-      <input type="file" accept="image/*" capture="environment" id="t-photo-extra" onchange="previewPhoto(this,'prev-extra')">
-      <img class="preview" id="prev-extra">
+      <label>Additional Photos (optional, can select more than one)</label>
+      <input type="file" accept="image/*" capture="environment" id="t-photo-extra" multiple onchange="previewMultiCount(this,'prev-extra-count')">
+      <div class="multi-photo-count" id="prev-extra-count"></div>
     </div>
   </div>
 
@@ -2458,6 +2459,15 @@ function previewPhoto(input, previewId) {
   }
 }
 
+// A text count rather than rendering every thumbnail — several full-size
+// preview images decoded at once is real memory/battery weight on a low-end
+// phone, and a count is all that's needed to confirm the selection worked.
+function previewMultiCount(input, countId) {
+  var el = document.getElementById(countId);
+  var n = input.files ? input.files.length : 0;
+  el.textContent = n > 0 ? (n + ' photo' + (n === 1 ? '' : 's') + ' selected') : '';
+}
+
 function compressImage(file, maxPx) {
   return new Promise(function(resolve, reject) {
     var reader = new FileReader();
@@ -2488,9 +2498,11 @@ async function collectPhotos(pairs) {
   var photos = [];
   for (var i = 0; i < pairs.length; i++) {
     var input = document.getElementById(pairs[i].id);
-    if (input && input.files && input.files[0]) {
+    if (!input || !input.files || !input.files.length) continue;
+    var files = pairs[i].multi ? Array.prototype.slice.call(input.files) : [input.files[0]];
+    for (var j = 0; j < files.length; j++) {
       try {
-        var b64 = await compressImage(input.files[0]);
+        var b64 = await compressImage(files[j]);
         photos.push({ label: pairs[i].label, data: b64 });
       } catch(e) {
         console.error('Photo compress error:', e);
@@ -2554,7 +2566,7 @@ async function submitTrialForm() {
   var photos = await collectPhotos([
     { id: 't-photo-balloon', label: 'balloon' },
     { id: 't-photo-boot', label: 'boot_exterior' },
-    { id: 't-photo-extra', label: 'additional' }
+    { id: 't-photo-extra', label: 'additional', multi: true }
   ]);
 
   var data = {
@@ -2628,9 +2640,10 @@ function clearTrialForm() {
   ['t-photo-balloon','t-photo-boot','t-photo-extra'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
-  ['prev-balloon','prev-boot','prev-extra'].forEach(function(id) {
+  ['prev-balloon','prev-boot'].forEach(function(id) {
     document.getElementById(id).classList.remove('visible');
   });
+  document.getElementById('prev-extra-count').textContent = '';
   selectedBoot = null;
   selectedSnake = null;
   resetTrialTiming();

@@ -259,13 +259,17 @@ function getOrCreateFolder_(name) {
   return DriveApp.createFolder(name);
 }
 
-function uploadImage_(base64Data, fileName, mimeType, folderName) {
-  var folder = getOrCreateFolder_(folderName || 'TLT_Gumboot_Trial_Photos');
+function uploadImageToFolder_(folder, base64Data, fileName, mimeType) {
   var decoded = Utilities.base64Decode(base64Data);
   var blob = Utilities.newBlob(decoded, mimeType || 'image/jpeg', fileName);
   var file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   return file.getUrl();
+}
+
+function uploadImage_(base64Data, fileName, mimeType, folderName) {
+  var folder = getOrCreateFolder_(folderName || 'TLT_Gumboot_Trial_Photos');
+  return uploadImageToFolder_(folder, base64Data, fileName, mimeType);
 }
 
 function uploadPhotos_(photos, idPrefix) {
@@ -297,6 +301,44 @@ function uploadBillPhoto_(photo, idPrefix) {
     Logger.log('Bill photo upload failed for ' + idPrefix + ': ' + e.message);
     return 'UPLOAD_FAILED';
   }
+}
+
+// Each trial gets its own subfolder (inside the main photos folder) named
+// "<Snake_ID>_<Boot_ID>_<Date>", so a researcher browsing Drive can find a
+// specific trial's photos without hunting through one giant flat folder.
+function getOrCreateTrialPhotoFolder_(snakeId, bootId, dateStr) {
+  var parent = getOrCreateFolder_('TLT_Gumboot_Trial_Photos');
+  var folderName = snakeId + '_' + bootId + '_' + dateStr;
+  var existing = parent.getFoldersByName(folderName);
+  if (existing.hasNext()) return existing.next();
+  return parent.createFolder(folderName);
+}
+
+// Balloon/boot-exterior get fixed descriptive names; any further photos are
+// all tagged "additional" by the front-end and numbered here in upload
+// order (1, 2, 3...) since a trial can have more than one.
+function uploadTrialPhotos_(photos, snakeId, bootId, dateStr) {
+  var links = [];
+  if (!photos || photos.length === 0) return links;
+  var folder = getOrCreateTrialPhotoFolder_(snakeId, bootId, dateStr);
+  var idPrefix = snakeId + '_' + bootId;
+  var additionalCount = 0;
+  for (var i = 0; i < photos.length; i++) {
+    var p = photos[i];
+    if (!p || !p.data) continue;
+    var niceName;
+    if (p.label === 'balloon') niceName = idPrefix + '_Balloon photo';
+    else if (p.label === 'boot_exterior') niceName = idPrefix + '_Boot exterior';
+    else { additionalCount++; niceName = idPrefix + '_Additional photo ' + additionalCount; }
+    try {
+      var url = uploadImageToFolder_(folder, p.data, niceName + '.jpg', 'image/jpeg');
+      links.push(niceName + ': ' + url);
+    } catch (e) {
+      Logger.log('Trial photo upload failed for ' + idPrefix + ': ' + e.message);
+      links.push(niceName + ': UPLOAD_FAILED');
+    }
+  }
+  return links;
 }
 
 // ---------- Registration ----------
@@ -544,7 +586,7 @@ function submitTrial(data) {
       }
     }
 
-    var photoLinks = uploadPhotos_(data.photos, data.trialId);
+    var photoLinks = uploadTrialPhotos_(data.photos, data.snakeId, data.bootId, data.date);
 
     // Leading apostrophe forces plain text so Sheets doesn't auto-detect
     // "HH:MM:SS" as a real time value and corrupt it on the next read-back
