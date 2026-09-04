@@ -1439,7 +1439,10 @@ document.addEventListener('DOMContentLoaded', function() {
   document.addEventListener('visibilitychange', function() {
     if (document.visibilityState === 'visible') syncNow();
   });
-  setInterval(syncNow, 60000);
+  // Gate the interval on visibility too, not just on the visibilitychange
+  // listener above — a background/screen-off tab would otherwise keep
+  // burning mobile data and battery on a poll nobody can see.
+  setInterval(function() { if (document.visibilityState === 'visible') syncNow(); }, 60000);
 });
 
 function dismissSplash() {
