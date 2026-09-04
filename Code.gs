@@ -102,7 +102,8 @@ var BOOT_HEADERS = [
   'IS_Standard','Mfg_Date','Batch_No',
   'Thick_T_mm','Thick_LM_mm','Thick_I_mm',
   'Photo_Links','Registered_Date','Recorded_By','Model_Abbr',
-  'Last_Edited_By','Last_Edited_Date'
+  'Last_Edited_By','Last_Edited_Date',
+  'Cost_Per_Pair','Bill_Photo_Link','Store_Name','Store_Location'
 ];
 
 var SNAKE_HEADERS = [
@@ -186,7 +187,8 @@ function getBoots() {
       bootId: r[0], brandAbbr: r[1], brandFull: r[2], model: r[3],
       size: r[4], session: r[5], isStandard: r[6], mfgDate: r[7], batch: r[8],
       thickT: r[9], thickLM: r[10], thickI: r[11], photoLinks: r[12],
-      recordedBy: r[14], modelAbbr: r[15]
+      recordedBy: r[14], modelAbbr: r[15],
+      costPerPair: r[18], billPhotoLink: r[19], storeName: r[20], storeLocation: r[21]
     });
   }
   return result;
@@ -251,14 +253,14 @@ function getAllTrials() {
 
 // ---------- Drive / image upload ----------
 
-function getOrCreateFolder_() {
-  var folders = DriveApp.getFoldersByName('TLT_Gumboot_Trial_Photos');
+function getOrCreateFolder_(name) {
+  var folders = DriveApp.getFoldersByName(name);
   if (folders.hasNext()) return folders.next();
-  return DriveApp.createFolder('TLT_Gumboot_Trial_Photos');
+  return DriveApp.createFolder(name);
 }
 
-function uploadImage_(base64Data, fileName, mimeType) {
-  var folder = getOrCreateFolder_();
+function uploadImage_(base64Data, fileName, mimeType, folderName) {
+  var folder = getOrCreateFolder_(folderName || 'TLT_Gumboot_Trial_Photos');
   var decoded = Utilities.base64Decode(base64Data);
   var blob = Utilities.newBlob(decoded, mimeType || 'image/jpeg', fileName);
   var file = folder.createFile(blob);
@@ -282,6 +284,19 @@ function uploadPhotos_(photos, idPrefix) {
     }
   }
   return links;
+}
+
+// Bill/receipt photos go in their own Drive folder, separate from the boot
+// condition photos, and are tracked in their own sheet column rather than
+// mixed into Photo_Links — they document the purchase, not the gear itself.
+function uploadBillPhoto_(photo, idPrefix) {
+  if (!photo || !photo.data) return '';
+  try {
+    return uploadImage_(photo.data, idPrefix + '_bill.jpg', 'image/jpeg', 'TLT_Gumboot_Trial_Bills');
+  } catch (e) {
+    Logger.log('Bill photo upload failed for ' + idPrefix + ': ' + e.message);
+    return 'UPLOAD_FAILED';
+  }
 }
 
 // ---------- Registration ----------
@@ -318,14 +333,18 @@ function registerBoot(data) {
       }
     }
 
-    var photoLinks = uploadPhotos_(data.photos, data.bootId);
+    var bootPhotos = (data.photos || []).filter(function(p) { return p && p.label !== 'bill'; });
+    var billPhoto = (data.photos || []).filter(function(p) { return p && p.label === 'bill'; })[0];
+    var photoLinks = uploadPhotos_(bootPhotos, data.bootId);
+    var billLink = uploadBillPhoto_(billPhoto, data.bootId);
 
     sheet.appendRow([
       data.bootId, data.brandAbbr, sanitizeCell_(data.brandFull), sanitizeCell_(data.model),
       data.size, data.session, sanitizeCell_(data.isStandard), sanitizeCell_(data.mfgDate), sanitizeCell_(data.batch),
       data.thickT, data.thickLM, data.thickI,
       photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy), data.modelAbbr,
-      '', ''
+      '', '',
+      data.costPerPair, billLink, sanitizeCell_(data.storeName), sanitizeCell_(data.storeLocation)
     ]);
 
     return { success: true, message: 'Boot registered: ' + data.bootId };
@@ -334,11 +353,13 @@ function registerBoot(data) {
   }
 }
 
-// Boot_ID, Brand_Abbr, Boot_Size, Session, and Model_Abbr are immutable on
-// edit (the front-end disables those fields) since they compose the ID —
-// changing them would mean renaming the row's key, not editing its data.
-// Photos are only touched if new ones are attached, so editing other fields
-// never wipes out previously uploaded photo links.
+// Boot_ID, Brand_Abbr, and Boot_Size are immutable on edit (the front-end
+// disables those fields) since they compose the ID — changing them would
+// mean renaming the row's key, not editing its data. Model_Abbr is NOT
+// locked: it was added after some boots were already registered, so a
+// legacy boot may need it filled in later without that meaning a rename.
+// Photos/bill photo are only touched if a new one is attached, so editing
+// other fields never wipes out previously uploaded links.
 function updateBoot(data) {
   var missing = missingFields_(data, [
     { key: 'bootId', label: 'Boot ID' },
@@ -366,9 +387,15 @@ function updateBoot(data) {
     var newRow = values[rowIdx].slice();
     while (newRow.length < BOOT_HEADERS.length) newRow.push('');
 
-    if (data.photos && data.photos.length) {
-      var uploaded = uploadPhotos_(data.photos, data.bootId);
+    var bootPhotos = (data.photos || []).filter(function(p) { return p && p.label !== 'bill'; });
+    var billPhoto = (data.photos || []).filter(function(p) { return p && p.label === 'bill'; })[0];
+    if (bootPhotos.length) {
+      var uploaded = uploadPhotos_(bootPhotos, data.bootId);
       if (uploaded.length) newRow[12] = uploaded.join('\n');
+    }
+    if (billPhoto) {
+      var billLink = uploadBillPhoto_(billPhoto, data.bootId);
+      if (billLink) newRow[19] = billLink;
     }
     newRow[2] = sanitizeCell_(data.brandFull);
     newRow[3] = sanitizeCell_(data.model);
@@ -378,8 +405,12 @@ function updateBoot(data) {
     newRow[9] = data.thickT;
     newRow[10] = data.thickLM;
     newRow[11] = data.thickI;
+    if (data.modelAbbr) newRow[15] = data.modelAbbr;
     newRow[16] = sanitizeCell_(data.recordedBy);
     newRow[17] = todayDateStr_();
+    newRow[18] = data.costPerPair;
+    newRow[20] = sanitizeCell_(data.storeName);
+    newRow[21] = sanitizeCell_(data.storeLocation);
 
     sheet.getRange(rowIdx + 1, 1, 1, BOOT_HEADERS.length).setValues([newRow]);
     return { success: true, message: 'Boot updated: ' + data.bootId };

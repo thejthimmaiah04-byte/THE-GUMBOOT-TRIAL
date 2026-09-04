@@ -29,6 +29,7 @@
       --text-light: #5f6d75;
       --border: #e0e0e0;
       --danger: #c0392b;
+      --blue: #1e6fd9;
       --radius: 10px;
       --shadow: 0 4px 14px rgba(13,31,38,0.14);
     }
@@ -250,6 +251,17 @@
     .reg-list-item .reg-id {
       font-family: 'Courier New', monospace; font-weight: 700; font-size: 14px; color: var(--green);
     }
+    .cert-dot {
+      display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+      margin-right: 6px; flex-shrink: 0; vertical-align: middle;
+    }
+    .cert-dot.certified { background: var(--green); }
+    .cert-dot.not-certified { background: var(--blue); }
+    .cert-legend {
+      display: flex; gap: 14px; font-size: 11.5px; color: var(--text-mid);
+      margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .cert-legend span { display: flex; align-items: center; }
     .reg-list-item .reg-sub { font-size: 12px; color: var(--text-mid); margin-top: 2px; }
     .reg-list-item .reg-edit-btn {
       flex-shrink: 0; background: var(--green-light); color: var(--green);
@@ -932,6 +944,28 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Purchase Details</div>
+    <label for="b-cost">Cost per Pair (&#8377;)</label>
+    <input type="number" id="b-cost" step="0.01" inputmode="decimal" placeholder="e.g. 450">
+    <div class="row">
+      <div>
+        <label for="b-store-name">Store Name</label>
+        <input type="text" id="b-store-name" placeholder="e.g. Sri Balaji Footwear">
+      </div>
+      <div>
+        <label for="b-store-location">Store Location (Town/City)</label>
+        <input type="text" id="b-store-location" placeholder="e.g. Kurnool">
+      </div>
+    </div>
+    <div class="photo-slot">
+      <label>Bill / Receipt Photo</label>
+      <input type="file" accept="image/*" capture="environment" id="b-photo-bill" onchange="previewPhoto(this,'prev-b-bill')">
+      <img class="preview" id="prev-b-bill">
+      <div id="b-bill-existing" style="display:none; font-size:12px; margin-top:6px;"></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Boot Photos</div>
     <div class="photo-slot">
       <label>Lateral View</label>
@@ -1386,6 +1420,26 @@ document.addEventListener('DOMContentLoaded', function() {
   loadTrialLog();
   flushPendingQueue();
   setTimeout(dismissSplash, 2600);
+
+  // ----- Multi-device sync -----
+  // The backend is a shared Google Sheet with no push/websocket support, so
+  // "syncing across devices" means each device has to go re-ask for fresh
+  // data. Re-fetching boots/snakes/trials never touches an in-progress
+  // form's own fields (only the cached lists + dropdowns), so it's safe to
+  // run in the background even mid-entry. Refresh: periodically, whenever
+  // the app is reconnected, and whenever the tab/app comes back to the
+  // foreground (covers switching apps on a phone, which is when a
+  // researcher is most likely to want another device's latest entries).
+  function syncNow() {
+    if (!navigator.onLine) return;
+    loadRegistries();
+    loadTrialLog();
+  }
+  window.addEventListener('online', syncNow);
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') syncNow();
+  });
+  setInterval(syncNow, 60000);
 });
 
 function dismissSplash() {
@@ -1802,6 +1856,34 @@ function buildCountBarChartHtml_(rows, emptyMsg, barColor, suffixFn) {
   }).join('');
 }
 
+// Generic conic-gradient donut builder — segments: [{label, count, color}].
+// centerLabel/centerValue are whatever should sit in the hole (a total, a
+// rate, etc). Returns just the donut+legend markup, not a wrapping card, so
+// callers can place several of these side by side.
+function buildDonutHtml_(segments, centerValue, centerLabel) {
+  var total = segments.reduce(function(s, seg) { return s + seg.count; }, 0);
+  if (total === 0) {
+    return '<div class="empty-state">No data yet.</div>';
+  }
+  var gradientParts = [];
+  var cursor = 0;
+  var legendHtml = '';
+  segments.forEach(function(seg) {
+    if (!seg.count) return;
+    var pct = (seg.count / total) * 100;
+    gradientParts.push(seg.color + ' ' + cursor + '% ' + (cursor + pct) + '%');
+    cursor += pct;
+    legendHtml += '<div class="legend-item"><span class="legend-dot" style="background:' + seg.color + '"></span>' +
+      '<span>' + escapeHtml_(seg.label) + '</span><span class="lg-count">' + seg.count + '</span></div>';
+  });
+  return '<div class="donut-wrap">' +
+      '<div class="donut" style="background:conic-gradient(' + gradientParts.join(', ') + ')">' +
+        '<div class="donut-hole"><div class="dh-value">' + centerValue + '</div><div class="dh-label">' + centerLabel + '</div></div>' +
+      '</div>' +
+      '<div class="legend">' + legendHtml + '</div>' +
+    '</div>';
+}
+
 function renderResultsAnalytics() {
   var el = document.getElementById('results-analytics-body');
   if (!el) return;
@@ -1853,6 +1935,66 @@ function renderResultsAnalytics() {
       '</div>' +
       '<div class="legend">' + legendHtml + '</div>' +
     '</div></div>';
+
+  // ----- Certified vs Non-Certified boots (of everything registered) -----
+  var certifiedBoots = bootsCache.filter(isBootCertified_).length;
+  var nonCertifiedBoots = bootsCache.length - certifiedBoots;
+  var certCountHtml = '<div class="card"><div class="card-title">Certified vs Non-Certified Boots</div>' +
+    buildDonutHtml_([
+      { label: 'Certified', count: certifiedBoots, color: 'var(--green)' },
+      { label: 'Not certified', count: nonCertifiedBoots, color: 'var(--blue)' }
+    ], bootsCache.length, 'Boots') +
+    '</div>';
+
+  // ----- Success rate: certified vs non-certified boots, independently -----
+  // Joins each trial back to its boot's certification status (trials don't
+  // store this directly) using the same success/failure/excluded rules as
+  // the headline protection rate.
+  function successRateFor_(certFlag) {
+    var succ = 0, fail = 0;
+    trials.forEach(function(t) {
+      if (RESULTS_EXCLUDED_OUTCOMES.indexOf(t.outcome) !== -1) return;
+      var b = bootsCache.find(function(x) { return x.bootId === t.bootId; });
+      if (isBootCertified_(b) !== certFlag) return;
+      if (t.outcome === RESULTS_FAILURE_OUTCOME) fail++;
+      else if (RESULTS_SUCCESS_OUTCOMES.indexOf(t.outcome) !== -1) succ++;
+    });
+    return { succ: succ, fail: fail, total: succ + fail };
+  }
+  function successRateDonutHtml_(rate, title) {
+    var pct = rate.total ? Math.round((rate.succ / rate.total) * 100) : null;
+    return '<div class="card"><div class="card-title">' + title + '</div>' +
+      (rate.total === 0
+        ? '<div class="empty-state">No completed trials with a struck outcome for this group yet.</div>'
+        : buildDonutHtml_([
+            { label: 'No puncture', count: rate.succ, color: 'var(--green)' },
+            { label: 'Puncture', count: rate.fail, color: 'var(--danger)' }
+          ], pct + '%', 'Success') +
+          '<div class="stat-caption">Based on ' + rate.total + ' completed trial' + (rate.total === 1 ? '' : 's') +
+          (rate.total < 5 ? ' — small sample, read with caution.' : '.') + '</div>'
+      ) + '</div>';
+  }
+  var certSuccessHtml = successRateDonutHtml_(successRateFor_(true), 'Success Rate — Certified Boots');
+  var nonCertSuccessHtml = successRateDonutHtml_(successRateFor_(false), 'Success Rate — Non-Certified Boots');
+
+  // ----- Boot cost & source overview -----
+  var costRows = bootsCache.slice().sort(function(a, b) {
+    return (parseFloat(b.costPerPair) || 0) - (parseFloat(a.costPerPair) || 0);
+  });
+  var costListHtml = costRows.length === 0 ? '<div class="empty-state">No boots registered yet.</div>' :
+    costRows.map(function(b) {
+      var certified = isBootCertified_(b);
+      var price = b.costPerPair ? '&#8377;' + b.costPerPair : '—';
+      var store = [b.storeName, b.storeLocation].filter(Boolean).join(', ');
+      return '<div class="reg-list-item" style="cursor:default">' +
+        '<div class="reg-main">' +
+          '<div class="reg-id"><span class="cert-dot ' + (certified ? 'certified' : 'not-certified') + '"></span>' + escapeHtml_(b.bootId) + '</div>' +
+          '<div class="reg-sub">' + escapeHtml_(b.brandFull) + (b.model ? ' — ' + escapeHtml_(b.model) : '') + (store ? ' &middot; ' + escapeHtml_(store) : '') + '</div>' +
+        '</div>' +
+        '<div class="bl-val" style="flex-shrink:0; font-weight:700; color:var(--text)">' + price + '</div>' +
+      '</div>';
+    }).join('');
+  var costHtml = '<div class="card"><div class="card-title">Boot Cost &amp; Source</div>' + costListHtml + '</div>';
 
   // ----- Trials by boot brand & type (volume, not outcome) -----
   // Grouped by brand+model rather than exact Boot_ID, so e.g. two same-model
@@ -1930,7 +2072,8 @@ function renderResultsAnalytics() {
       : trendRowsHtml + '<div class="stat-caption">Each bar is one month\'s full outcome mix (see legend above) — a bar getting greener/less red over time means the boots are holding up better as trials continue.</div>') +
     '</div>';
 
-  el.innerHTML = statsHtml + donutHtml + bootTypeHtml + bootHtml + speciesHtml + individualHtml + trendHtml;
+  el.innerHTML = statsHtml + donutHtml + certCountHtml + certSuccessHtml + nonCertSuccessHtml + costHtml +
+    bootTypeHtml + bootHtml + speciesHtml + individualHtml + trendHtml;
 }
 
 // ----- Load registries -----
@@ -1992,6 +2135,10 @@ function escapeHtml_(s) {
   });
 }
 
+function isBootCertified_(b) {
+  return !!(b && b.isStandard && b.isStandard !== 'Not Certified');
+}
+
 function renderBootList() {
   var q = (document.getElementById('boot-list-search').value || '').trim().toLowerCase();
   var listEl = document.getElementById('boot-list-items');
@@ -2005,11 +2152,12 @@ function renderBootList() {
     listEl.innerHTML = '<div class="empty-state">No boots found.</div>';
     return;
   }
-  listEl.innerHTML = items.map(function(b) {
-    var certified = b.isStandard && b.isStandard !== 'Not Certified';
+  var legendHtml = '<div class="cert-legend"><span><span class="cert-dot certified"></span>Certified</span><span><span class="cert-dot not-certified"></span>Not certified</span></div>';
+  listEl.innerHTML = legendHtml + items.map(function(b) {
+    var certified = isBootCertified_(b);
     return '<div class="reg-list-item" onclick="editBootFromList(\'' + b.bootId.replace(/'/g, "\\'") + '\')">' +
       '<div class="reg-main">' +
-        '<div class="reg-id">' + escapeHtml_(b.bootId) + '</div>' +
+        '<div class="reg-id"><span class="cert-dot ' + (certified ? 'certified' : 'not-certified') + '"></span>' + escapeHtml_(b.bootId) + '</div>' +
         '<div class="reg-sub">' + escapeHtml_(b.brandFull) + (b.model ? ' — ' + escapeHtml_(b.model) : '') + ', Size ' + escapeHtml_(b.size) +
           (certified ? ' &middot; Certified' : '') + '</div>' +
       '</div>' +
@@ -2069,7 +2217,10 @@ function loadBootForEdit() {
   document.getElementById('b-model-abbr').value = b.modelAbbr || '';
   document.getElementById('b-size').value = b.size;
   document.getElementById('b-abbr').disabled = true;
-  document.getElementById('b-model-abbr').disabled = true;
+  // Model Abbr is NOT locked during edit — it was added after some boots
+  // were already registered, so a legacy boot needs to be able to fill it
+  // in later without that meaning a rename.
+  document.getElementById('b-model-abbr').disabled = false;
   document.getElementById('b-size').disabled = true;
 
   document.getElementById('b-brand').value = b.brandFull || '';
@@ -2079,6 +2230,16 @@ function loadBootForEdit() {
   document.getElementById('b-thick-t').value = b.thickT || '';
   document.getElementById('b-thick-lm').value = b.thickLM || '';
   document.getElementById('b-thick-i').value = b.thickI || '';
+  document.getElementById('b-cost').value = b.costPerPair || '';
+  document.getElementById('b-store-name').value = b.storeName || '';
+  document.getElementById('b-store-location').value = b.storeLocation || '';
+  var billEl = document.getElementById('b-bill-existing');
+  if (b.billPhotoLink && b.billPhotoLink !== 'UPLOAD_FAILED') {
+    billEl.innerHTML = 'Current bill on file: <a href="' + b.billPhotoLink + '" target="_blank">view</a> (choose a file above to replace it)';
+    billEl.style.display = 'block';
+  } else {
+    billEl.style.display = 'none';
+  }
 
   var certified = !!(b.isStandard && b.isStandard !== 'Not Certified');
   setCertified(certified);
@@ -2538,8 +2699,11 @@ async function submitBootForm() {
 
   var photos = await collectPhotos([
     { id: 'b-photo-lat', label: 'lateral' },
-    { id: 'b-photo-label', label: 'label' }
+    { id: 'b-photo-label', label: 'label' },
+    { id: 'b-photo-bill', label: 'bill' }
   ]);
+
+  var costPerPair = parseFloat(document.getElementById('b-cost').value) || '';
 
   var data = {
     bootId: bootId,
@@ -2552,6 +2716,9 @@ async function submitBootForm() {
     mfgDate: document.getElementById('b-mfg').value.trim(),
     batch: document.getElementById('b-batch').value.trim(),
     thickT: thickT, thickLM: thickLM, thickI: thickI,
+    costPerPair: costPerPair,
+    storeName: document.getElementById('b-store-name').value.trim(),
+    storeLocation: document.getElementById('b-store-location').value.trim(),
     recordedBy: getRecorderName(),
     photos: photos
   };
@@ -2582,16 +2749,17 @@ async function submitBootForm() {
 
 function clearBootForm() {
   ['b-abbr','b-model-abbr','b-brand','b-model','b-size','b-is','b-mfg','b-batch',
-   'b-thick-t','b-thick-lm','b-thick-i'].forEach(function(id) {
+   'b-thick-t','b-thick-lm','b-thick-i','b-cost','b-store-name','b-store-location'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
   setCertified(false);
-  ['b-photo-lat','b-photo-label'].forEach(function(id) {
+  ['b-photo-lat','b-photo-label','b-photo-bill'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
-  ['prev-b-lat','prev-b-label'].forEach(function(id) {
+  ['prev-b-lat','prev-b-label','prev-b-bill'].forEach(function(id) {
     document.getElementById(id).classList.remove('visible');
   });
+  document.getElementById('b-bill-existing').style.display = 'none';
   document.getElementById('b-abbr').disabled = false;
   document.getElementById('b-model-abbr').disabled = false;
   document.getElementById('b-size').disabled = false;
