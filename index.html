@@ -1918,6 +1918,28 @@ function renderResultsAnalytics() {
     '</div><div class="stat-caption">Protection &amp; puncture rate are of the ' + validCount + ' trial' + (validCount === 1 ? '' : 's') +
     ' where the snake struck and the trial completed — non-reactive and incomplete trials (' + excludedCount + ') are excluded so they don\'t distort how the boots actually performed.</div></div>';
 
+  // ----- Environmental conditions (temp & humidity) -----
+  // Uses every trial with a logged reading, regardless of outcome — the
+  // conditions at the time are real data even for an incomplete/non-reactive
+  // trial, unlike the puncture-rate math above which needs a real strike.
+  var envTemps = trials.map(function(t) { return parseFloat(t.tempC); }).filter(function(n) { return !isNaN(n); });
+  var envHumids = trials.map(function(t) { return parseFloat(t.humidityPct); }).filter(function(n) { return !isNaN(n); });
+  function round1_(n) { return Math.round(n * 10) / 10; }
+  function avgOf_(arr) { return arr.length ? round1_(arr.reduce(function(a, b) { return a + b; }, 0) / arr.length) : null; }
+  function rangeOf_(arr, unit) {
+    if (!arr.length) return '—';
+    var min = round1_(Math.min.apply(null, arr)), max = round1_(Math.max.apply(null, arr));
+    return min === max ? (min + unit) : (min + '&ndash;' + max + unit);
+  }
+  var avgTemp = avgOf_(envTemps), avgHumid = avgOf_(envHumids);
+  var envHtml = '<div class="card"><div class="card-title">Environmental Conditions</div><div class="stat-row">' +
+    '<div class="stat-tile"><div class="stat-value">' + (avgTemp === null ? '—' : avgTemp + '&deg;C') + '</div><div class="stat-label">Avg Temp</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + rangeOf_(envTemps, '&deg;C') + '</div><div class="stat-label">Temp Range</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + (avgHumid === null ? '—' : avgHumid + '%') + '</div><div class="stat-label">Avg Humidity</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + rangeOf_(envHumids, '%') + '</div><div class="stat-label">Humidity Range</div></div>' +
+    '</div><div class="stat-caption">Based on ' + envTemps.length + ' trial' + (envTemps.length === 1 ? '' : 's') + ' with temperature logged and ' +
+    envHumids.length + ' with humidity logged, out of ' + total + ' total trials.</div></div>';
+
   // ----- Outcome distribution donut -----
   var gradientParts = [];
   var cursor = 0;
@@ -2075,7 +2097,7 @@ function renderResultsAnalytics() {
       : trendRowsHtml + '<div class="stat-caption">Each bar is one month\'s full outcome mix (see legend above) — a bar getting greener/less red over time means the boots are holding up better as trials continue.</div>') +
     '</div>';
 
-  el.innerHTML = statsHtml + donutHtml + certCountHtml + certSuccessHtml + nonCertSuccessHtml + costHtml +
+  el.innerHTML = statsHtml + envHtml + donutHtml + certCountHtml + certSuccessHtml + nonCertSuccessHtml + costHtml +
     bootTypeHtml + bootHtml + speciesHtml + individualHtml + trendHtml;
 }
 
