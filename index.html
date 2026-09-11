@@ -1185,11 +1185,34 @@
 <!-- ==================== JAVASCRIPT ==================== -->
 <script>
 // ----- PWA service worker (enables install / offline app-shell caching) -----
+// skipWaiting()+clients.claim() in service-worker.js make a new version take
+// over quickly once the browser notices the script changed — but a browser
+// only checks for that lazily (roughly once a day, or on some navigations),
+// and even once a new worker DOES take control, an already-open tab keeps
+// running the OLD JavaScript already in memory until it reloads. On a phone
+// that's installed as a home-screen app and rarely fully closed, that gap
+// can leave a device running stale code for a long time with no sign
+// anything is wrong — exactly the kind of silent per-device drift that made
+// one researcher's phone look "broken" compared to another's. Two fixes:
+// actively ask for an update check (on load, and reusing the existing
+// visibility-based sync cadence) instead of waiting on the browser's own
+// schedule, and reload automatically the moment a new worker takes control.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function() {
-    navigator.serviceWorker.register('./service-worker.js').catch(function(e) {
+    navigator.serviceWorker.register('./service-worker.js').then(function(reg) {
+      document.addEventListener('visibilitychange', function() {
+        if (document.visibilityState === 'visible') reg.update().catch(function() {});
+      });
+    }).catch(function(e) {
       console.error('Service worker registration failed:', e);
     });
+  });
+
+  var swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function() {
+    if (swReloaded) return;
+    swReloaded = true;
+    window.location.reload();
   });
 }
 
