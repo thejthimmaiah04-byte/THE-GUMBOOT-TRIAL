@@ -67,6 +67,22 @@
       padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0;
     }
 
+    /* --- In-app browser warning --- */
+    /* Not sticky (unlike #data-error-banner) — it's a one-time dismissible
+       notice, not something that needs to stay pinned while scrolling, and
+       the two would otherwise collide at the same sticky offset if both
+       happen to be visible at once. */
+    #inapp-browser-banner {
+      background: var(--amber); color: #fff; font-size: 13px;
+      padding: 12px 16px;
+    }
+    #inapp-browser-banner b { display: block; margin-bottom: 4px; }
+    #inapp-browser-banner div { line-height: 1.5; margin-bottom: 8px; }
+    #inapp-browser-banner button {
+      background: #fff; color: var(--amber-dark); border: none; border-radius: 6px;
+      padding: 7px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+
     /* --- Pages --- */
     .page { display: none; padding: 16px 16px 24px; }
     .page.active { display: block; }
@@ -587,6 +603,13 @@
     <div class="online-dot" id="online-dot" title="Online"></div>
   </div>
 </header>
+
+<!-- ==================== IN-APP BROWSER WARNING ==================== -->
+<div id="inapp-browser-banner" style="display:none">
+  <b>Open this in Chrome or Safari</b>
+  <div id="inapp-browser-text"></div>
+  <button type="button" onclick="document.getElementById('inapp-browser-banner').style.display='none'">I understand, continue anyway</button>
+</div>
 
 <!-- ==================== DATA LOAD ERROR BANNER ==================== -->
 <div id="data-error-banner" style="display:none">
@@ -1447,8 +1470,41 @@ function flushPendingQueue() {
     });
 }
 
+// ----- In-app browser detection -----
+// A link tapped inside WhatsApp/Instagram/Messenger/etc. opens in that
+// app's own restricted webview, not the phone's real browser. Those
+// webviews frequently block exactly the kind of background cross-site
+// script loading this app relies on for reading data — so the app can
+// look "broken" (or just permanently empty, with no error) for someone
+// who always opens it via a shared chat link, while working fine for
+// anyone who opens it directly in Chrome/Safari. There's no code-side fix
+// for the webview's own restrictions, so the best this app can do is
+// detect it and say so plainly instead of leaving the person guessing.
+function detectInAppBrowser_() {
+  var ua = navigator.userAgent || '';
+  if (/FBAN|FBAV|FB_IAB|FBIOS/i.test(ua)) return 'Facebook/Messenger';
+  if (/Instagram/i.test(ua)) return 'Instagram';
+  if (/Line\//i.test(ua)) return 'LINE';
+  if (/MicroMessenger/i.test(ua)) return 'WeChat';
+  if (/TikTok/i.test(ua)) return 'TikTok';
+  if (/Twitter/i.test(ua)) return 'Twitter/X';
+  return null;
+}
+
+function checkInAppBrowser() {
+  var app = detectInAppBrowser_();
+  if (!app) return;
+  var banner = document.getElementById('inapp-browser-banner');
+  document.getElementById('inapp-browser-text').textContent =
+    'You opened this link inside ' + app + ', which can block this app from loading its data. ' +
+    'Tap the menu (⋮ or ••• on Android, or the Share icon on iPhone) and choose "Open in Chrome" or "Open in Safari" ' +
+    '— then add it to your Home Screen from there so it always opens correctly next time.';
+  banner.style.display = 'block';
+}
+
 // ----- Init -----
 document.addEventListener('DOMContentLoaded', function() {
+  checkInAppBrowser();
   history.replaceState({ page: 'home' }, '', '#home');
   history.pushState({ page: 'home' }, '', '#home');
   var today = new Date().toISOString().split('T')[0];
