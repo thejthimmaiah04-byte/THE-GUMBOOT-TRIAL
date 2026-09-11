@@ -56,6 +56,17 @@
     }
     .online-dot.offline { background: var(--danger); }
 
+    /* --- Data load error banner --- */
+    #data-error-banner {
+      background: var(--danger); color: #fff; font-size: 13px;
+      padding: 10px 16px; display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; position: sticky; top: 58px; z-index: 99;
+    }
+    #data-error-banner button {
+      background: #fff; color: var(--danger); border: none; border-radius: 6px;
+      padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; flex-shrink: 0;
+    }
+
     /* --- Pages --- */
     .page { display: none; padding: 16px 16px 24px; }
     .page.active { display: block; }
@@ -576,6 +587,12 @@
     <div class="online-dot" id="online-dot" title="Online"></div>
   </div>
 </header>
+
+<!-- ==================== DATA LOAD ERROR BANNER ==================== -->
+<div id="data-error-banner" style="display:none">
+  <span id="data-error-text">Couldn't load data from the server.</span>
+  <button type="button" onclick="retryDataLoad()">Retry</button>
+</div>
 
 <!-- ==================== PAGE: HOME ==================== -->
 <div id="page-home" class="page active">
@@ -1188,7 +1205,12 @@ function apiGet(action) {
   return new Promise(function(resolve, reject) {
     var cbName = '_jsonp_cb_' + (_jsonpCounter++) + '_' + Date.now();
     var script = document.createElement('script');
-    var timeoutId = setTimeout(function() { cleanup(); reject(new Error('Request timed out')); }, 20000);
+    // 30s (not the original 20s) — a slow rural connection or a cold-started
+    // Apps Script deployment can genuinely take a while to respond, and a
+    // timeout here was indistinguishable from "no data" to the researcher
+    // since it failed silently (see the error banner wiring around
+    // loadRegistries/loadTrialLog for the fix to that visibility gap).
+    var timeoutId = setTimeout(function() { cleanup(); reject(new Error('Request timed out')); }, 30000);
     function cleanup() {
       clearTimeout(timeoutId);
       delete window[cbName];
@@ -1566,6 +1588,32 @@ var trialsByDate = {};
 var calViewDate = new Date();
 var calSelectedDate = null;
 
+// A failed apiGet used to just log to the console and leave the page
+// showing empty lists — on a device with a real connectivity problem
+// (blocked script, timeout, dead zone) that's indistinguishable from "this
+// device genuinely has no data", which is exactly the report that came in:
+// works on one phone, looks completely empty on another. Track failures
+// per source and show a banner with a retry button so the researcher can
+// actually tell "no data" apart from "couldn't reach the server".
+var dataLoadErrors = { boots: false, snakes: false, trials: false };
+
+function updateDataErrorBanner() {
+  var banner = document.getElementById('data-error-banner');
+  var failed = Object.keys(dataLoadErrors).filter(function(k) { return dataLoadErrors[k]; });
+  if (failed.length === 0) {
+    banner.style.display = 'none';
+    return;
+  }
+  document.getElementById('data-error-text').textContent =
+    'Couldn\'t load ' + failed.join('/') + ' from the server — check your internet connection.';
+  banner.style.display = 'flex';
+}
+
+function retryDataLoad() {
+  loadRegistries();
+  loadTrialLog();
+}
+
 function loadTrialLog() {
   apiGet('getAllTrials').then(function(trials) {
     allTrialsCache = trials || [];
@@ -1575,6 +1623,8 @@ function loadTrialLog() {
       if (!trialsByDate[t.date]) trialsByDate[t.date] = [];
       trialsByDate[t.date].push(t);
     });
+    dataLoadErrors.trials = false;
+    updateDataErrorBanner();
     renderCalendar();
     renderTrialSummary();
     if (document.getElementById('page-results').classList.contains('active')) {
@@ -1583,6 +1633,8 @@ function loadTrialLog() {
     }
   }).catch(function(e) {
     console.error('Failed to load trial log:', e);
+    dataLoadErrors.trials = true;
+    updateDataErrorBanner();
   });
 }
 
@@ -2106,20 +2158,28 @@ function renderResultsAnalytics() {
 function loadRegistries() {
   apiGet('getBoots').then(function(boots) {
     bootsCache = boots || [];
+    dataLoadErrors.boots = false;
+    updateDataErrorBanner();
     populateBootDropdown();
     populateEditBootDropdown();
     if (document.getElementById('page-boot-list').classList.contains('active')) renderBootList();
   }).catch(function(e) {
     console.error('Failed to load boots:', e);
+    dataLoadErrors.boots = true;
+    updateDataErrorBanner();
   });
 
   apiGet('getSnakes').then(function(snakes) {
     snakesCache = snakes || [];
+    dataLoadErrors.snakes = false;
+    updateDataErrorBanner();
     populateSnakeDropdown();
     populateEditSnakeDropdown();
     if (document.getElementById('page-snake-list').classList.contains('active')) renderSnakeList();
   }).catch(function(e) {
     console.error('Failed to load snakes:', e);
+    dataLoadErrors.snakes = true;
+    updateDataErrorBanner();
   });
 }
 
