@@ -1091,12 +1091,24 @@
                placeholder="e.g. 01" oninput="updateSnakeId()">
       </div>
     </div>
-    <label for="s-sex">Sex</label>
-    <select id="s-sex">
-      <option value="U">U &mdash; Unknown</option>
-      <option value="M">M &mdash; Male</option>
-      <option value="F">F &mdash; Female</option>
-    </select>
+    <div class="row">
+      <div>
+        <label for="s-sex">Sex</label>
+        <select id="s-sex">
+          <option value="U">U &mdash; Unknown</option>
+          <option value="M">M &mdash; Male</option>
+          <option value="F">F &mdash; Female</option>
+        </select>
+      </div>
+      <div>
+        <label for="s-origin">Origin</label>
+        <select id="s-origin">
+          <option value="">-- select --</option>
+          <option value="Wild Caught">Wild Caught</option>
+          <option value="Captive">Captive</option>
+        </select>
+      </div>
+    </div>
   </div>
 
   <!-- Everything below is optional at registration — only Species, Age,
@@ -2485,6 +2497,7 @@ function loadSnakeForEdit() {
   document.getElementById('s-num').disabled = true;
 
   document.getElementById('s-sex').value = s.sex || 'U';
+  document.getElementById('s-origin').value = s.origin || '';
   document.getElementById('s-tl').value = s.tl || '';
   document.getElementById('s-svl').value = s.svl || '';
   document.getElementById('s-hl').value = s.hl || '';
@@ -3041,6 +3054,7 @@ async function submitSnakeForm() {
     speciesCode: species,
     ageClass: age,
     sex: document.getElementById('s-sex').value,
+    origin: document.getElementById('s-origin').value,
     tl: tl, svl: svl, hl: hl, hw: hw, bm: bm, flL: flL, flR: flR,
     bodyCondition: document.getElementById('s-condition').value,
     lastFeedDate: document.getElementById('s-lastfeed').value || '',
@@ -3080,6 +3094,7 @@ function clearSnakeForm() {
     document.getElementById(id).value = '';
   });
   document.getElementById('s-sex').value = 'U';
+  document.getElementById('s-origin').value = '';
   document.getElementById('s-condition').value = 'Good';
   document.getElementById('s-lastfeed').value = '';
   document.getElementById('s-species').disabled = false;

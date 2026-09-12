@@ -117,7 +117,7 @@ var SNAKE_HEADERS = [
   'FL_L_mm','FL_R_mm','Dentition',
   'Body_Condition','Last_Feed_Date','Registered_Date',
   'Iso_In_Time','Iso_Out_Time','Time_To_Unconscious_Sec','Recorded_By',
-  'Last_Edited_By','Last_Edited_Date'
+  'Last_Edited_By','Last_Edited_Date','Origin'
 ];
 
 // Single source of truth for species metadata — used to build both the name
@@ -213,7 +213,7 @@ function getSnakes() {
       flL: r[10], flR: r[11], dentition: r[12], bodyCondition: r[13],
       lastFeedDate: r[14],
       isoInTime: r[16], isoOutTime: r[17], timeToUnconsciousSec: r[18],
-      recordedBy: r[19]
+      recordedBy: r[19], origin: r[22]
     });
   }
   return result;
@@ -517,7 +517,8 @@ function registerSnake(data) {
       data.isoOutTime ? "'" + data.isoOutTime : '',
       data.timeToUnconsciousSec || '',
       sanitizeCell_(data.recordedBy),
-      '', ''
+      '', '',
+      data.origin || ''
     ]);
 
     return { success: true, message: 'Snake registered: ' + data.snakeId };
@@ -569,6 +570,7 @@ function updateSnake(data) {
     if (data.timeToUnconsciousSec) newRow[18] = data.timeToUnconsciousSec;
     newRow[20] = sanitizeCell_(data.recordedBy);
     newRow[21] = todayDateStr_();
+    if (data.origin) newRow[22] = data.origin;
 
     sheet.getRange(rowIdx + 1, 1, 1, SNAKE_HEADERS.length).setValues([newRow]);
     return { success: true, message: 'Snake updated: ' + data.snakeId };
