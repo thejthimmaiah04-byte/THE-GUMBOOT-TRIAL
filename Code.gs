@@ -320,9 +320,13 @@ function getOrCreateTrialPhotoFolder_(snakeId, bootId, dateStr) {
   return parent.createFolder(folderName);
 }
 
-// Balloon/boot-exterior get fixed descriptive names; any further photos are
-// all tagged "additional" by the front-end and numbered here in upload
-// order (1, 2, 3...) since a trial can have more than one.
+// Balloon/boot-exterior get fixed descriptive names; a region photo (label
+// "region_<Name>", e.g. "region_Heel") is named with the snake, boot, date,
+// and struck region per-photo rather than just idPrefix, since the point is
+// to be unambiguous about which region it documents even outside the
+// per-trial folder; any further photos are all tagged "additional" and
+// numbered here in upload order (1, 2, 3...) since a trial can have more
+// than one.
 function uploadTrialPhotos_(photos, snakeId, bootId, dateStr) {
   var links = [];
   if (!photos || photos.length === 0) return links;
@@ -335,6 +339,9 @@ function uploadTrialPhotos_(photos, snakeId, bootId, dateStr) {
     var niceName;
     if (p.label === 'balloon') niceName = idPrefix + '_Balloon photo';
     else if (p.label === 'boot_exterior') niceName = idPrefix + '_Boot exterior';
+    else if (p.label && p.label.indexOf('region_') === 0) {
+      niceName = idPrefix + '_' + dateStr + '_' + p.label.slice('region_'.length);
+    }
     else { additionalCount++; niceName = idPrefix + '_Additional photo ' + additionalCount; }
     try {
       var url = uploadImageToFolder_(folder, p.data, niceName + '.jpg', 'image/jpeg');

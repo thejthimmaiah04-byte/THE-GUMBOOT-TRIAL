@@ -883,13 +883,13 @@
     <div id="region-section">
       <label>Region Struck</label>
       <div class="cb-group" id="region-checks">
-        <label><input type="checkbox" value="T" onchange="renderRegionOutcomes()"> T &ndash; Toe</label>
-        <label><input type="checkbox" value="LM" onchange="renderRegionOutcomes()"> LM &ndash; Lateral</label>
-        <label><input type="checkbox" value="IM" onchange="renderRegionOutcomes()"> IM &ndash; Instep</label>
-        <label><input type="checkbox" value="H" onchange="renderRegionOutcomes()"> H &ndash; Heel</label>
-        <label><input type="checkbox" value="A" onchange="renderRegionOutcomes()"> A &ndash; Ankle</label>
-        <label><input type="checkbox" value="S" onchange="renderRegionOutcomes()"> S &ndash; Shin</label>
-        <label><input type="checkbox" value="U" onchange="renderRegionOutcomes()"> U &ndash; Undetermined</label>
+        <label><input type="checkbox" value="T" onchange="onRegionCheckChange()"> T &ndash; Toe</label>
+        <label><input type="checkbox" value="LM" onchange="onRegionCheckChange()"> LM &ndash; Lateral</label>
+        <label><input type="checkbox" value="IM" onchange="onRegionCheckChange()"> IM &ndash; Instep</label>
+        <label><input type="checkbox" value="H" onchange="onRegionCheckChange()"> H &ndash; Heel</label>
+        <label><input type="checkbox" value="A" onchange="onRegionCheckChange()"> A &ndash; Ankle</label>
+        <label><input type="checkbox" value="S" onchange="onRegionCheckChange()"> S &ndash; Shin</label>
+        <label><input type="checkbox" value="U" onchange="onRegionCheckChange()"> U &ndash; Undetermined</label>
       </div>
       <div id="region-outcomes-wrap" style="display:none">
         <label>Outcome per Region Struck</label>
@@ -910,6 +910,9 @@
       <label id="boot-photo-label">Boot Exterior (fang marks / entry points)</label>
       <input type="file" accept="image/*" capture="environment" id="t-photo-boot" onchange="previewPhoto(this,'prev-boot')">
       <img class="preview" id="prev-boot">
+    </div>
+    <div id="region-photos-wrap" style="display:none">
+      <div id="region-photos-list"></div>
     </div>
     <div class="photo-slot">
       <label>Additional Photos (optional, can select more than one)</label>
@@ -2680,7 +2683,45 @@ function onOutcomeChange() {
 // region during the same entry doesn't lose whatever outcome was already
 // picked for it.
 var REGION_LABELS = { T: 'T — Toe', LM: 'LM — Lateral', IM: 'IM — Instep', H: 'H — Heel', A: 'A — Ankle', S: 'S — Shin', U: 'U — Undetermined' };
+var REGION_NAMES = { T: 'Toe', LM: 'Lateral', IM: 'Instep', H: 'Heel', A: 'Ankle', S: 'Shin', U: 'Undetermined' };
 var regionOutcomeValues = {};
+
+function onRegionCheckChange() {
+  renderRegionOutcomes();
+  renderRegionPhotos();
+}
+
+// One photo slot per checked region, so striking e.g. Heel and Shin gets a
+// "Heel Photo" and "Shin Photo" slot each. Only adds/removes the slots that
+// actually changed — an existing slot for a region that's still checked is
+// left untouched, so its already-chosen file isn't lost on every toggle.
+function renderRegionPhotos() {
+  var checked = Array.prototype.map.call(
+    document.querySelectorAll('#region-checks input:checked'), function(cb) { return cb.value; }
+  );
+  var wrap = document.getElementById('region-photos-wrap');
+  var list = document.getElementById('region-photos-list');
+
+  Array.prototype.forEach.call(list.querySelectorAll('.photo-slot[data-region]'), function(slot) {
+    if (checked.indexOf(slot.getAttribute('data-region')) === -1) slot.remove();
+  });
+
+  checked.forEach(function(region) {
+    if (list.querySelector('.photo-slot[data-region="' + region + '"]')) return;
+    var slot = document.createElement('div');
+    slot.className = 'photo-slot';
+    slot.setAttribute('data-region', region);
+    var inputId = 'reg-photo-' + region;
+    var previewId = 'prev-reg-' + region;
+    slot.innerHTML =
+      '<label>' + REGION_NAMES[region] + ' Photo</label>' +
+      '<input type="file" accept="image/*" capture="environment" id="' + inputId + '" onchange="previewPhoto(this,\'' + previewId + '\')">' +
+      '<img class="preview" id="' + previewId + '">';
+    list.appendChild(slot);
+  });
+
+  wrap.style.display = checked.length ? 'block' : 'none';
+}
 
 function setRegionOutcome(region, value) {
   regionOutcomeValues[region] = value;
@@ -2838,11 +2879,18 @@ async function submitTrialForm() {
 
   showLoading('Uploading photos & saving trial...');
 
+  var regionPhotoPairs = Array.prototype.map.call(
+    document.querySelectorAll('#region-photos-list .photo-slot[data-region]'),
+    function(slot) {
+      var region = slot.getAttribute('data-region');
+      return { id: 'reg-photo-' + region, label: 'region_' + REGION_NAMES[region] };
+    }
+  );
   var photos = await collectPhotos([
     { id: 't-photo-balloon', label: 'balloon' },
     { id: 't-photo-boot', label: 'boot_exterior' },
     { id: 't-photo-extra', label: 'additional', multi: true }
-  ]);
+  ].concat(regionPhotoPairs));
 
   var data = {
     trialId: trialId,
@@ -2919,6 +2967,7 @@ function clearTrialForm() {
   document.querySelectorAll('#region-checks input').forEach(function(cb) { cb.checked = false; });
   regionOutcomeValues = {};
   renderRegionOutcomes();
+  renderRegionPhotos();
   document.getElementById('boot-info').style.display = 'none';
   document.getElementById('snake-info').style.display = 'none';
   ['t-photo-balloon','t-photo-boot','t-photo-extra'].forEach(function(id) {
