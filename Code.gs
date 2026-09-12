@@ -320,7 +320,7 @@ function getOrCreateTrialPhotoFolder_(snakeId, bootId, dateStr) {
   return parent.createFolder(folderName);
 }
 
-// Balloon/boot-exterior get fixed descriptive names; a region photo (label
+// Balloon gets a fixed descriptive name; a region photo (label
 // "region_<Name>", e.g. "region_Heel") is named with the snake, boot, date,
 // and struck region per-photo rather than just idPrefix, since the point is
 // to be unambiguous about which region it documents even outside the
@@ -338,7 +338,6 @@ function uploadTrialPhotos_(photos, snakeId, bootId, dateStr) {
     if (!p || !p.data) continue;
     var niceName;
     if (p.label === 'balloon') niceName = idPrefix + '_Balloon photo';
-    else if (p.label === 'boot_exterior') niceName = idPrefix + '_Boot exterior';
     else if (p.label && p.label.indexOf('region_') === 0) {
       niceName = idPrefix + '_' + dateStr + '_' + p.label.slice('region_'.length);
     }

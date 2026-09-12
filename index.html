@@ -906,11 +906,6 @@
       <input type="file" accept="image/*" capture="environment" id="t-photo-balloon" onchange="previewPhoto(this,'prev-balloon')">
       <img class="preview" id="prev-balloon">
     </div>
-    <div class="photo-slot" id="boot-photo-section">
-      <label id="boot-photo-label">Boot Exterior (fang marks / entry points)</label>
-      <input type="file" accept="image/*" capture="environment" id="t-photo-boot" onchange="previewPhoto(this,'prev-boot')">
-      <img class="preview" id="prev-boot">
-    </div>
     <div id="region-photos-wrap" style="display:none">
       <div id="region-photos-list"></div>
     </div>
@@ -2664,17 +2659,14 @@ function onOutcomeChange() {
   var outcome = document.getElementById('t-outcome').value;
   var regionSec = document.getElementById('region-section');
   var strikesSec = document.getElementById('strikes-section');
-  var bootPhotoSec = document.getElementById('boot-photo-section');
 
   if (outcome === 'NP-R') {
     document.getElementById('t-strikes').value = '0';
     document.getElementById('t-bites').value = '0';
     regionSec.style.display = 'none';
-    bootPhotoSec.style.display = 'none';
   } else {
     regionSec.style.display = 'block';
     strikesSec.style.display = 'block';
-    bootPhotoSec.style.display = 'block';
   }
 }
 
@@ -2888,7 +2880,6 @@ async function submitTrialForm() {
   );
   var photos = await collectPhotos([
     { id: 't-photo-balloon', label: 'balloon' },
-    { id: 't-photo-boot', label: 'boot_exterior' },
     { id: 't-photo-extra', label: 'additional', multi: true }
   ].concat(regionPhotoPairs));
 
@@ -2970,12 +2961,10 @@ function clearTrialForm() {
   renderRegionPhotos();
   document.getElementById('boot-info').style.display = 'none';
   document.getElementById('snake-info').style.display = 'none';
-  ['t-photo-balloon','t-photo-boot','t-photo-extra'].forEach(function(id) {
+  ['t-photo-balloon','t-photo-extra'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
-  ['prev-balloon','prev-boot'].forEach(function(id) {
-    document.getElementById(id).classList.remove('visible');
-  });
+  document.getElementById('prev-balloon').classList.remove('visible');
   document.getElementById('prev-extra-count').textContent = '';
   selectedBoot = null;
   selectedSnake = null;
@@ -2983,7 +2972,6 @@ function clearTrialForm() {
   formDirty.trial = false;
   updateTrialId();
   document.getElementById('region-section').style.display = 'block';
-  document.getElementById('boot-photo-section').style.display = 'block';
 }
 
 // ----- Trial timing (start/stop) -----
