@@ -178,6 +178,15 @@
       accent-color: var(--green);
     }
 
+    #region-outcomes-wrap { margin-top: 12px; }
+    .region-outcome-row {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-top: 6px;
+    }
+    .region-outcome-row:first-child { margin-top: 6px; }
+    .region-outcome-row .ro-label { font-size: 13px; font-weight: 600; color: var(--text); flex-shrink: 0; }
+    .region-outcome-row select { width: auto; min-width: 150px; }
+
     /* --- Photo preview --- */
     .photo-slot { margin-top: 10px; }
     .photo-slot:first-child { margin-top: 0; }
@@ -859,19 +868,31 @@
     </select>
 
     <div id="strikes-section">
-      <label for="t-strikes">Strike Attempts</label>
-      <input type="number" id="t-strikes" min="0" max="99" inputmode="numeric" placeholder="0">
+      <div class="row">
+        <div>
+          <label for="t-strikes">Number of Strikes</label>
+          <input type="number" id="t-strikes" min="0" max="99" inputmode="numeric" placeholder="0">
+        </div>
+        <div>
+          <label for="t-bites">Number of Bites</label>
+          <input type="number" id="t-bites" min="0" max="99" inputmode="numeric" placeholder="0">
+        </div>
+      </div>
     </div>
 
     <div id="region-section">
       <label>Region Struck</label>
       <div class="cb-group" id="region-checks">
-        <label><input type="checkbox" value="T"> T &ndash; Toe</label>
-        <label><input type="checkbox" value="LM"> LM &ndash; Lateral</label>
-        <label><input type="checkbox" value="IM"> IM &ndash; Instep</label>
-        <label><input type="checkbox" value="H"> H &ndash; Heel</label>
-        <label><input type="checkbox" value="A"> A &ndash; Ankle</label>
-        <label><input type="checkbox" value="U"> U &ndash; Undetermined</label>
+        <label><input type="checkbox" value="T" onchange="renderRegionOutcomes()"> T &ndash; Toe</label>
+        <label><input type="checkbox" value="LM" onchange="renderRegionOutcomes()"> LM &ndash; Lateral</label>
+        <label><input type="checkbox" value="IM" onchange="renderRegionOutcomes()"> IM &ndash; Instep</label>
+        <label><input type="checkbox" value="H" onchange="renderRegionOutcomes()"> H &ndash; Heel</label>
+        <label><input type="checkbox" value="A" onchange="renderRegionOutcomes()"> A &ndash; Ankle</label>
+        <label><input type="checkbox" value="U" onchange="renderRegionOutcomes()"> U &ndash; Undetermined</label>
+      </div>
+      <div id="region-outcomes-wrap" style="display:none">
+        <label>Outcome per Region Struck</label>
+        <div id="region-outcomes-list"></div>
       </div>
     </div>
   </div>
@@ -1836,6 +1857,8 @@ function buildTrialDetailHtml_(t) {
   html += 'TL: <span>' + (t.tl || '-') + '</span> mm &middot; SVL: <span>' + (t.svl || '-') + '</span> mm &middot; BM: <span>' + (t.bm || '-') + '</span> g<br>';
   html += 'Fang L/R: <span>' + (t.flL || '-') + ' / ' + (t.flR || '-') + '</span> mm &middot; Dentition: <span>' + (t.dentition || '-') + '</span><br>';
   html += 'Boot: <span>' + t.bootId + '</span> &middot; Thickness T/LM/I: <span>' + (t.bootThickT || '-') + ' / ' + (t.bootThickLM || '-') + ' / ' + (t.bootThickI || '-') + '</span> mm<br>';
+  html += 'Strikes: <span>' + (t.strikes != null ? t.strikes : '-') + '</span> &middot; Bites: <span>' + (t.bites != null ? t.bites : '-') + '</span><br>';
+  if (t.regionOutcomes) html += 'Region Outcomes: <span>' + t.regionOutcomes + '</span><br>';
   html += 'Temp: <span>' + (t.tempC || '-') + '&deg;C</span> &middot; Humidity: <span>' + (t.humidityPct || '-') + '%</span><br>';
   if (t.trialStartTime || t.trialStopTime) {
     html += 'Trial: <span>' + (t.trialStartTime || '-') + '</span> to <span>' + (t.trialStopTime || '-') + '</span>' +
@@ -2641,6 +2664,7 @@ function onOutcomeChange() {
 
   if (outcome === 'NP-R') {
     document.getElementById('t-strikes').value = '0';
+    document.getElementById('t-bites').value = '0';
     regionSec.style.display = 'none';
     bootPhotoSec.style.display = 'none';
   } else {
@@ -2648,6 +2672,42 @@ function onOutcomeChange() {
     strikesSec.style.display = 'block';
     bootPhotoSec.style.display = 'block';
   }
+}
+
+// ----- Per-region bite outcome (Puncture / No Puncture / Inconclusive) -----
+// Keyed separately from the checkboxes so unchecking then rechecking a
+// region during the same entry doesn't lose whatever outcome was already
+// picked for it.
+var REGION_LABELS = { T: 'T — Toe', LM: 'LM — Lateral', IM: 'IM — Instep', H: 'H — Heel', A: 'A — Ankle', U: 'U — Undetermined' };
+var regionOutcomeValues = {};
+
+function setRegionOutcome(region, value) {
+  regionOutcomeValues[region] = value;
+  formDirty.trial = true;
+}
+
+function renderRegionOutcomes() {
+  var checked = Array.prototype.map.call(
+    document.querySelectorAll('#region-checks input:checked'), function(cb) { return cb.value; }
+  );
+  var wrap = document.getElementById('region-outcomes-wrap');
+  var list = document.getElementById('region-outcomes-list');
+  if (checked.length === 0) {
+    wrap.style.display = 'none';
+    list.innerHTML = '';
+    return;
+  }
+  wrap.style.display = 'block';
+  list.innerHTML = checked.map(function(region) {
+    var val = regionOutcomeValues[region] || '';
+    return '<div class="region-outcome-row"><span class="ro-label">' + REGION_LABELS[region] + '</span>' +
+      '<select onchange="setRegionOutcome(\'' + region + '\', this.value)">' +
+        '<option value=""' + (val === '' ? ' selected' : '') + '>-- select --</option>' +
+        '<option value="Puncture"' + (val === 'Puncture' ? ' selected' : '') + '>Puncture</option>' +
+        '<option value="No Puncture"' + (val === 'No Puncture' ? ' selected' : '') + '>No Puncture</option>' +
+        '<option value="Inconclusive"' + (val === 'Inconclusive' ? ' selected' : '') + '>Inconclusive</option>' +
+      '</select></div>';
+  }).join('');
 }
 
 // ----- Photo handling -----
@@ -2736,6 +2796,7 @@ async function submitTrialForm() {
   var snakeId = document.getElementById('t-snake').value;
   var outcome = document.getElementById('t-outcome').value;
   var strikes = document.getElementById('t-strikes').value;
+  var bites = document.getElementById('t-bites').value;
 
   if (!date) { errors.push('Date'); markInvalid('t-date'); }
   if (!bootId) { errors.push('Boot'); markInvalid('t-boot'); }
@@ -2748,10 +2809,21 @@ async function submitTrialForm() {
     return;
   }
 
+  // Non-blocking — per the "no confirmation popups" preference, this just
+  // flags a likely data-entry slip without stopping the submit.
+  if (bites !== '' && strikes !== '' && parseInt(bites) > parseInt(strikes)) {
+    showToast('Note: Bites (' + bites + ') is greater than Strikes (' + strikes + ')', 'warn');
+  }
+
   var regionChecked = [];
   document.querySelectorAll('#region-checks input:checked').forEach(function(cb) {
     regionChecked.push(cb.value);
   });
+  // "<region>:<Puncture/No Puncture/Inconclusive>" per struck region, e.g.
+  // "T:Puncture, LM:No Puncture" — blank outcome if left unselected.
+  var regionOutcomesStr = regionChecked.map(function(region) {
+    return region + ':' + (regionOutcomeValues[region] || '');
+  }).join(', ');
 
   var dateStr = date.replace(/-/g, '');
   var trialResult = computeTrialId(snakeId, bootId, dateStr);
@@ -2794,7 +2866,9 @@ async function submitTrialForm() {
     dentition: selectedSnake ? selectedSnake.dentition : '',
     outcome: outcome,
     strikes: outcome === 'NP-R' ? 0 : parseInt(strikes) || 0,
+    bites: outcome === 'NP-R' ? 0 : parseInt(bites) || 0,
     regionStruck: regionChecked.join('/'),
+    regionOutcomes: regionOutcomesStr,
     tempC: tempC,
     humidityPct: humidityPct,
     notes: document.getElementById('t-notes').value.trim(),
@@ -2837,10 +2911,13 @@ function clearTrialForm() {
   document.getElementById('t-snake').value = '';
   document.getElementById('t-outcome').value = '';
   document.getElementById('t-strikes').value = '';
+  document.getElementById('t-bites').value = '';
   document.getElementById('t-notes').value = '';
   document.getElementById('t-temp').value = '';
   document.getElementById('t-hum').value = '';
   document.querySelectorAll('#region-checks input').forEach(function(cb) { cb.checked = false; });
+  regionOutcomeValues = {};
+  renderRegionOutcomes();
   document.getElementById('boot-info').style.display = 'none';
   document.getElementById('snake-info').style.display = 'none';
   ['t-photo-balloon','t-photo-boot','t-photo-extra'].forEach(function(id) {

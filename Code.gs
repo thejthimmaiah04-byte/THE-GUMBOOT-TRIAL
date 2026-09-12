@@ -95,7 +95,7 @@ var TRIAL_HEADERS = [
   'Outcome','Strikes','Region_Struck',
   'Temp_C','Humidity_pct','Photo_Links','Notes','Timestamp',
   'Trial_Start_Time','Trial_Stop_Time','Trial_Duration_Sec','Recorded_By',
-  'Trial_Time'
+  'Trial_Time','Bites','Region_Outcomes'
 ];
 
 // Boot_ID format: Brand_Abbr + Sole_Color + Rubber_Color + Pair_Number +
@@ -251,7 +251,7 @@ function getAllTrials() {
       outcome: r[21], strikes: r[22], regionStruck: r[23],
       tempC: r[24], humidityPct: r[25], photoLinks: r[26], notes: r[27],
       trialStartTime: r[29], trialStopTime: r[30], trialDurationSec: r[31],
-      recordedBy: r[32], trialTime: r[33]
+      recordedBy: r[32], trialTime: r[33], bites: r[34], regionOutcomes: r[35]
     });
   }
   return result;
@@ -629,7 +629,9 @@ function submitTrial(data) {
       // Same leading-apostrophe guard as isoInTime itself — this is a copy
       // of that same plain-text "yyyy-MM-dd HH:mm:ss" string, and would
       // otherwise get silently reinterpreted as a real date/time cell.
-      data.trialTime ? "'" + data.trialTime : ''
+      data.trialTime ? "'" + data.trialTime : '',
+      data.bites,
+      sanitizeCell_(data.regionOutcomes)
     ]);
 
     return { success: true, message: 'Trial recorded: ' + data.trialId };
