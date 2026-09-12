@@ -888,6 +888,7 @@
         <label><input type="checkbox" value="IM" onchange="renderRegionOutcomes()"> IM &ndash; Instep</label>
         <label><input type="checkbox" value="H" onchange="renderRegionOutcomes()"> H &ndash; Heel</label>
         <label><input type="checkbox" value="A" onchange="renderRegionOutcomes()"> A &ndash; Ankle</label>
+        <label><input type="checkbox" value="S" onchange="renderRegionOutcomes()"> S &ndash; Shin</label>
         <label><input type="checkbox" value="U" onchange="renderRegionOutcomes()"> U &ndash; Undetermined</label>
       </div>
       <div id="region-outcomes-wrap" style="display:none">
@@ -2678,7 +2679,7 @@ function onOutcomeChange() {
 // Keyed separately from the checkboxes so unchecking then rechecking a
 // region during the same entry doesn't lose whatever outcome was already
 // picked for it.
-var REGION_LABELS = { T: 'T — Toe', LM: 'LM — Lateral', IM: 'IM — Instep', H: 'H — Heel', A: 'A — Ankle', U: 'U — Undetermined' };
+var REGION_LABELS = { T: 'T — Toe', LM: 'LM — Lateral', IM: 'IM — Instep', H: 'H — Heel', A: 'A — Ankle', S: 'S — Shin', U: 'U — Undetermined' };
 var regionOutcomeValues = {};
 
 function setRegionOutcome(region, value) {
