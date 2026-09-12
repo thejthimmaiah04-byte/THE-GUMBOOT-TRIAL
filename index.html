@@ -1033,12 +1033,12 @@
   <div class="card">
     <div class="card-title">Boot Photos</div>
     <div class="photo-slot">
-      <label>Lateral View</label>
+      <label>Sole</label>
       <input type="file" accept="image/*" capture="environment" id="b-photo-lat" onchange="previewPhoto(this,'prev-b-lat')">
       <img class="preview" id="prev-b-lat">
     </div>
     <div class="photo-slot">
-      <label>Label / Standard Marking</label>
+      <label>Runner</label>
       <input type="file" accept="image/*" capture="environment" id="b-photo-label" onchange="previewPhoto(this,'prev-b-label')">
       <img class="preview" id="prev-b-label">
     </div>
@@ -2923,8 +2923,8 @@ async function submitBootForm() {
   showLoading(isEdit ? 'Saving changes...' : 'Registering boot...');
 
   var photos = await collectPhotos([
-    { id: 'b-photo-lat', label: 'lateral' },
-    { id: 'b-photo-label', label: 'label' },
+    { id: 'b-photo-lat', label: 'sole' },
+    { id: 'b-photo-label', label: 'runner' },
     { id: 'b-photo-bill', label: 'bill' }
   ]);
 
