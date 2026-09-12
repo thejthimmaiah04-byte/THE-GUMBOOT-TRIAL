@@ -920,7 +920,7 @@
   <div class="id-badge pending" id="boot-id-badge">
     <div class="id-label">Boot ID</div>
     <div id="boot-id-text">Fill details below</div>
-    <div class="id-warn" id="boot-id-warn" style="display:none">Already registered &mdash; use a different size or model abbr</div>
+    <div class="id-warn" id="boot-id-warn" style="display:none">Already registered &mdash; check colors, pair number, and side</div>
   </div>
 
   <div class="card">
@@ -932,19 +932,43 @@
                style="text-transform:uppercase" oninput="updateBootId()">
       </div>
       <div>
-        <label for="b-model-abbr">Model Abbr</label>
-        <input type="text" id="b-model-abbr" maxlength="4" placeholder="e.g. SGP"
+        <label for="b-sole-color">Sole Color</label>
+        <input type="text" id="b-sole-color" maxlength="4" placeholder="e.g. BLK"
                style="text-transform:uppercase" oninput="updateBootId()">
       </div>
       <div>
-        <label for="b-size">Boot Size</label>
-        <input type="number" id="b-size" inputmode="numeric" placeholder="e.g. 42" oninput="updateBootId()">
+        <label for="b-rubber-color">Rubber Color</label>
+        <input type="text" id="b-rubber-color" maxlength="4" placeholder="e.g. GRN"
+               style="text-transform:uppercase" oninput="updateBootId()">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label for="b-pair-num">Pair Number</label>
+        <input type="number" id="b-pair-num" min="1" max="99" inputmode="numeric" placeholder="e.g. 1" oninput="updateBootId()">
+      </div>
+      <div>
+        <label>Left / Right Boot</label>
+        <div class="row" style="margin-top:0">
+          <button type="button" class="btn-toggle" id="btn-side-left" onclick="setBootSide('L'); formDirty.boot = true;" style="margin-top:0">Left</button>
+          <button type="button" class="btn-toggle" id="btn-side-right" onclick="setBootSide('R'); formDirty.boot = true;" style="margin-top:0">Right</button>
+        </div>
       </div>
     </div>
     <label for="b-brand">Full Brand Name</label>
     <input type="text" id="b-brand" placeholder="e.g. Paragon">
-    <label for="b-model">Model Name</label>
-    <input type="text" id="b-model" placeholder="e.g. Safety Gumboot Pro">
+    <div class="row">
+      <div>
+        <label for="b-model">Model Name (optional)</label>
+        <input type="text" id="b-model" placeholder="e.g. Safety Gumboot Pro">
+      </div>
+      <div>
+        <label for="b-model-abbr">Model Abbr (optional)</label>
+        <input type="text" id="b-model-abbr" maxlength="4" placeholder="e.g. SGP" style="text-transform:uppercase">
+      </div>
+    </div>
+    <label for="b-size">Boot Size (optional)</label>
+    <input type="number" id="b-size" inputmode="numeric" placeholder="e.g. 42">
     <label>IS/BIS Certification</label>
     <div class="row">
       <button type="button" class="btn-toggle" id="btn-certified-yes" onclick="setCertified(true); formDirty.boot = true;">Certified</button>
@@ -1067,15 +1091,23 @@
                placeholder="e.g. 01" oninput="updateSnakeId()">
       </div>
     </div>
+    <label for="s-sex">Sex</label>
+    <select id="s-sex">
+      <option value="U">U &mdash; Unknown</option>
+      <option value="M">M &mdash; Male</option>
+      <option value="F">F &mdash; Female</option>
+    </select>
+  </div>
+
+  <!-- Everything below is optional at registration — only Species, Age,
+       Individual #, and Sex are required to save. Morphometrics/fang/
+       isoflurane data can be filled in now or added later via Edit
+       Registered Snake. -->
+  <div id="snake-details-section">
+
+  <div class="card">
+    <div class="card-title">Health Assessment</div>
     <div class="row">
-      <div>
-        <label for="s-sex">Sex</label>
-        <select id="s-sex">
-          <option value="U">U &mdash; Unknown</option>
-          <option value="M">M &mdash; Male</option>
-          <option value="F">F &mdash; Female</option>
-        </select>
-      </div>
       <div>
         <label for="s-condition">Body Condition</label>
         <select id="s-condition">
@@ -1084,9 +1116,11 @@
           <option value="Poor">Poor</option>
         </select>
       </div>
+      <div>
+        <label for="s-lastfeed">Last Feed Date</label>
+        <input type="date" id="s-lastfeed">
+      </div>
     </div>
-    <label for="s-lastfeed">Last Feed Date</label>
-    <input type="date" id="s-lastfeed">
   </div>
 
   <div class="card">
@@ -1141,6 +1175,8 @@
     <label for="s-bm">BM &ndash; Body mass (g)</label>
     <input type="number" id="s-bm" step="0.1" inputmode="decimal" placeholder="g">
   </div>
+
+  </div><!-- /snake-details-section -->
 
   <div class="sticky-spacer"></div>
   <button class="btn btn-primary btn-sticky" id="btn-submit-snake" onclick="submitSnakeForm()">Register Snake</button>
@@ -1793,6 +1829,7 @@ function buildTrialDetailHtml_(t) {
     html += 'Trial: <span>' + (t.trialStartTime || '-') + '</span> to <span>' + (t.trialStopTime || '-') + '</span>' +
       (t.trialDurationSec ? ' (' + t.trialDurationSec + 's)' : '') + '<br>';
   }
+  if (t.trialTime) html += 'Trial Time (Snake In): <span>' + t.trialTime + '</span><br>';
   if (t.notes) html += 'Notes: ' + t.notes + '<br>';
   if (t.photoLinks) {
     String(t.photoLinks).split('\n').forEach(function(line) {
@@ -2310,7 +2347,7 @@ function renderBootList() {
   var countEl = document.getElementById('boot-list-count');
   var items = bootsCache.filter(function(b) {
     if (!q) return true;
-    return [b.bootId, b.brandFull, b.model].join(' ').toLowerCase().indexOf(q) !== -1;
+    return [b.bootId, b.brandFull, b.model, b.soleColor, b.rubberColor].join(' ').toLowerCase().indexOf(q) !== -1;
   });
   countEl.textContent = items.length + ' of ' + bootsCache.length + ' registered';
   if (items.length === 0) {
@@ -2320,10 +2357,14 @@ function renderBootList() {
   var legendHtml = '<div class="cert-legend"><span><span class="cert-dot certified"></span>Certified</span><span><span class="cert-dot not-certified"></span>Not certified</span></div>';
   listEl.innerHTML = legendHtml + items.map(function(b) {
     var certified = isBootCertified_(b);
+    var subParts = [b.brandFull];
+    if (b.soleColor || b.rubberColor) subParts.push('Sole ' + (b.soleColor || '-') + ' / Rubber ' + (b.rubberColor || '-'));
+    if (b.pairNumber) subParts.push('Pair ' + b.pairNumber);
+    subParts.push(b.side === 'L' ? 'Left' : (b.side === 'R' ? 'Right' : ''));
     return '<div class="reg-list-item" onclick="editBootFromList(\'' + b.bootId.replace(/'/g, "\\'") + '\')">' +
       '<div class="reg-main">' +
         '<div class="reg-id"><span class="cert-dot ' + (certified ? 'certified' : 'not-certified') + '"></span>' + escapeHtml_(b.bootId) + '</div>' +
-        '<div class="reg-sub">' + escapeHtml_(b.brandFull) + (b.model ? ' — ' + escapeHtml_(b.model) : '') + ', Size ' + escapeHtml_(b.size) +
+        '<div class="reg-sub">' + subParts.filter(Boolean).map(escapeHtml_).join(' &middot; ') +
           (certified ? ' &middot; Certified' : '') + '</div>' +
       '</div>' +
       '<button type="button" class="reg-edit-btn">Edit</button>' +
@@ -2379,14 +2420,19 @@ function loadBootForEdit() {
 
   editingBootId = id;
   document.getElementById('b-abbr').value = b.brandAbbr || '';
-  document.getElementById('b-model-abbr').value = b.modelAbbr || '';
-  document.getElementById('b-size').value = b.size;
   document.getElementById('b-abbr').disabled = true;
-  // Model Abbr is NOT locked during edit — it was added after some boots
-  // were already registered, so a legacy boot needs to be able to fill it
-  // in later without that meaning a rename.
-  document.getElementById('b-model-abbr').disabled = false;
-  document.getElementById('b-size').disabled = true;
+  // Only Brand Abbr is locked during edit — it's the true anchor of the
+  // boot's identity. Everything else (colors, pair number, side, model
+  // abbr, size) stays editable even for an already-registered boot, since
+  // several of these fields were added after some boots already existed
+  // and a legacy record needs to be completable without that meaning a
+  // rename (Boot_ID itself never changes on edit regardless).
+  document.getElementById('b-sole-color').value = b.soleColor || '';
+  document.getElementById('b-rubber-color').value = b.rubberColor || '';
+  document.getElementById('b-pair-num').value = b.pairNumber || '';
+  setBootSide(b.side || null);
+  document.getElementById('b-model-abbr').value = b.modelAbbr || '';
+  document.getElementById('b-size').value = b.size || '';
 
   document.getElementById('b-brand').value = b.brandFull || '';
   document.getElementById('b-model').value = b.model || '';
@@ -2696,10 +2742,6 @@ async function submitTrialForm() {
   if (!checkRange('Humidity', humidityPct, 0, 100)) return;
   if (!checkRange('Strikes', strikes, 0, 50)) return;
 
-  var confirmMsg = 'Submit trial: ' + snakeId + ' vs ' + bootId + ', Outcome: ' + outcome + '?';
-  if (trialResult.isRepeat) confirmMsg = 'This is a repeat trial for this Snake+Boot+Date.\n' + confirmMsg;
-  if (!confirm(confirmMsg)) return;
-
   showLoading('Uploading photos & saving trial...');
 
   var photos = await collectPhotos([
@@ -2738,6 +2780,10 @@ async function submitTrialForm() {
     trialStartTime: trialStartTime ? formatTimeHHMMSS(trialStartTime) : '',
     trialStopTime: trialStopTime ? formatTimeHHMMSS(trialStopTime) : '',
     trialDurationSec: (trialStartTime && trialStopTime) ? Math.round((trialStopTime - trialStartTime) / 1000) : '',
+    // "Trial Time" is deliberately the same value as the snake's own
+    // Iso_In_Time (Snake In) rather than a separately-recorded timestamp —
+    // the trial is considered to start when the snake goes under.
+    trialTime: selectedSnake ? (selectedSnake.isoInTime || '') : '',
     recordedBy: getRecorderName(),
     photos: photos
   };
@@ -2837,19 +2883,26 @@ async function submitBootForm() {
   clearInvalid();
   var isEdit = !!editingBootId;
   var abbr = document.getElementById('b-abbr').value.trim().toUpperCase();
+  var soleColor = document.getElementById('b-sole-color').value.trim().toUpperCase();
+  var rubberColor = document.getElementById('b-rubber-color').value.trim().toUpperCase();
+  var pairNum = document.getElementById('b-pair-num').value.trim();
   var modelAbbr = document.getElementById('b-model-abbr').value.trim().toUpperCase();
   var size = document.getElementById('b-size').value.trim();
   var brandFull = document.getElementById('b-brand').value.trim();
 
   var errors = [];
-  // ID-composing fields are locked (disabled) during edit, so a legacy record
-  // registered before the Model Abbr field existed must still be editable
-  // even though it can't retroactively fill in that now-disabled field.
+  // ID-composing fields are locked (disabled) during edit only for Brand
+  // Abbr — the true anchor of a boot's identity. Colors/pair/side are left
+  // editable even during edit so a boot registered before this scheme (or
+  // with a typo) can still be corrected/completed; Boot_ID itself never
+  // changes on edit since the lookup always uses the original editingBootId.
   if (!isEdit) {
     if (!abbr || abbr.length < 2) { errors.push('Brand Abbr'); markInvalid('b-abbr'); }
-    if (!modelAbbr) { errors.push('Model Abbr'); markInvalid('b-model-abbr'); }
-    if (!size) { errors.push('Size'); markInvalid('b-size'); }
   }
+  if (!soleColor) { errors.push('Sole Color'); markInvalid('b-sole-color'); }
+  if (!rubberColor) { errors.push('Rubber Color'); markInvalid('b-rubber-color'); }
+  if (!pairNum) { errors.push('Pair Number'); markInvalid('b-pair-num'); }
+  if (!bootSide) { errors.push('Left/Right'); }
   if (!brandFull) { errors.push('Brand Name'); markInvalid('b-brand'); }
 
   if (errors.length > 0) {
@@ -2857,7 +2910,7 @@ async function submitBootForm() {
     return;
   }
 
-  var bootId = editingBootId || (abbr + modelAbbr + '-' + size);
+  var bootId = editingBootId || computeBootId_(abbr, soleColor, rubberColor, pairNum, bootSide);
   var certified = bootCertified;
 
   var thickT = parseFloat(document.getElementById('b-thick-t').value) || '';
@@ -2866,11 +2919,6 @@ async function submitBootForm() {
   if (!checkRange('Thickness T', thickT, 0.5, 20)) return;
   if (!checkRange('Thickness LM', thickLM, 0.5, 20)) return;
   if (!checkRange('Thickness I', thickI, 0.5, 20)) return;
-
-  var confirmMsg = isEdit
-    ? 'You are EDITING already-registered data for ' + bootId + '. Save changes?'
-    : 'Register boot ' + bootId + ' (' + brandFull + ' ' + modelAbbr + ', size ' + size + ')?';
-  if (!confirm(confirmMsg)) return;
 
   showLoading(isEdit ? 'Saving changes...' : 'Registering boot...');
 
@@ -2885,10 +2933,14 @@ async function submitBootForm() {
   var data = {
     bootId: bootId,
     brandAbbr: abbr,
+    soleColor: soleColor,
+    rubberColor: rubberColor,
+    pairNumber: pairNum,
+    side: bootSide,
     modelAbbr: modelAbbr,
     brandFull: brandFull,
     model: document.getElementById('b-model').value.trim(),
-    size: parseInt(size),
+    size: size ? parseInt(size) : '',
     isStandard: certified ? document.getElementById('b-is').value.trim() : 'Not Certified',
     mfgDate: document.getElementById('b-mfg').value.trim(),
     batch: document.getElementById('b-batch').value.trim(),
@@ -2925,11 +2977,12 @@ async function submitBootForm() {
 }
 
 function clearBootForm() {
-  ['b-abbr','b-model-abbr','b-brand','b-model','b-size','b-is','b-mfg','b-batch',
+  ['b-abbr','b-sole-color','b-rubber-color','b-pair-num','b-model-abbr','b-brand','b-model','b-size','b-is','b-mfg','b-batch',
    'b-thick-t','b-thick-lm','b-thick-i','b-cost','b-store-name','b-store-location'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
   setCertified(false);
+  setBootSide(null);
   ['b-photo-lat','b-photo-label','b-photo-bill'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
@@ -2938,8 +2991,6 @@ function clearBootForm() {
   });
   document.getElementById('b-bill-existing').style.display = 'none';
   document.getElementById('b-abbr').disabled = false;
-  document.getElementById('b-model-abbr').disabled = false;
-  document.getElementById('b-size').disabled = false;
   document.getElementById('btn-submit-boot').textContent = 'Register Boot';
   document.getElementById('edit-boot-select').value = '';
   editingBootId = null;
@@ -2982,11 +3033,6 @@ async function submitSnakeForm() {
   if (!checkRange('BM', bm, 5, 5000)) return;
   if (!checkRange('Fang L', flL, 1, 30)) return;
   if (!checkRange('Fang R', flR, 1, 30)) return;
-
-  var confirmMsg = isEdit
-    ? 'You are EDITING already-registered data for ' + snakeId + '. Save changes?'
-    : 'Register snake ' + snakeId + '?';
-  if (!confirm(confirmMsg)) return;
 
   showLoading(isEdit ? 'Saving changes...' : 'Registering snake...');
 
@@ -3096,6 +3142,7 @@ function resetSnakeInOut() {
 
 // ----- ID generators -----
 var bootCertified = false;
+var bootSide = null;
 
 function setCertified(val) {
   bootCertified = val;
@@ -3105,16 +3152,33 @@ function setCertified(val) {
   if (!val) document.getElementById('b-is').value = '';
 }
 
+function setBootSide(val) {
+  bootSide = val;
+  document.getElementById('btn-side-left').classList.toggle('active', val === 'L');
+  document.getElementById('btn-side-right').classList.toggle('active', val === 'R');
+  updateBootId();
+}
+
+// Boot ID = Brand Abbr + Sole Color + Rubber Color + Pair Number + Side
+// (L/R) — each physical boot (not the pair) is its own registered record,
+// so a pair being tested produces two Boot_IDs, e.g. PAR-BLK-GRN-01-L and
+// PAR-BLK-GRN-01-R.
+function computeBootId_(abbr, soleColor, rubberColor, pairNum, side) {
+  if (!abbr || !soleColor || !rubberColor || !pairNum || !side) return null;
+  return abbr + '-' + soleColor + '-' + rubberColor + '-' + pairNum + '-' + side;
+}
+
 function updateBootId() {
   var badge = document.getElementById('boot-id-badge');
   var text = document.getElementById('boot-id-text');
   var warn = document.getElementById('boot-id-warn');
   var submitBtn = document.getElementById('btn-submit-boot');
   var abbr = document.getElementById('b-abbr').value.trim().toUpperCase();
-  var modelAbbr = document.getElementById('b-model-abbr').value.trim().toUpperCase();
-  var size = document.getElementById('b-size').value.trim();
-  if (abbr && modelAbbr && size) {
-    var bootId = abbr + modelAbbr + '-' + size;
+  var soleColor = document.getElementById('b-sole-color').value.trim().toUpperCase();
+  var rubberColor = document.getElementById('b-rubber-color').value.trim().toUpperCase();
+  var pairNum = document.getElementById('b-pair-num').value.trim();
+  var bootId = computeBootId_(abbr, soleColor, rubberColor, pairNum, bootSide);
+  if (bootId) {
     text.textContent = bootId;
     badge.classList.remove('pending');
     var isDup = bootsCache.some(function(b) { return b.bootId === bootId; });

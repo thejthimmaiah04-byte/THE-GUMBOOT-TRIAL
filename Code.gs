@@ -94,16 +94,21 @@ var TRIAL_HEADERS = [
   'FL_L_mm','FL_R_mm','Dentition',
   'Outcome','Strikes','Region_Struck',
   'Temp_C','Humidity_pct','Photo_Links','Notes','Timestamp',
-  'Trial_Start_Time','Trial_Stop_Time','Trial_Duration_Sec','Recorded_By'
+  'Trial_Start_Time','Trial_Stop_Time','Trial_Duration_Sec','Recorded_By',
+  'Trial_Time'
 ];
 
+// Boot_ID format: Brand_Abbr + Sole_Color + Rubber_Color + Pair_Number +
+// Side (L/R) — each physical boot is its own registered record, not the
+// pair, so a pair produces two rows (...-01-L and ...-01-R).
 var BOOT_HEADERS = [
   'Boot_ID','Brand_Abbr','Brand_Full','Model','Boot_Size','Session',
   'IS_Standard','Mfg_Date','Batch_No',
   'Thick_T_mm','Thick_LM_mm','Thick_I_mm',
   'Photo_Links','Registered_Date','Recorded_By','Model_Abbr',
   'Last_Edited_By','Last_Edited_Date',
-  'Cost_Per_Pair','Bill_Photo_Link','Store_Name','Store_Location'
+  'Cost_Per_Pair','Bill_Photo_Link','Store_Name','Store_Location',
+  'Sole_Color','Rubber_Color','Pair_Number','Side'
 ];
 
 var SNAKE_HEADERS = [
@@ -188,7 +193,8 @@ function getBoots() {
       size: r[4], session: r[5], isStandard: r[6], mfgDate: r[7], batch: r[8],
       thickT: r[9], thickLM: r[10], thickI: r[11], photoLinks: r[12],
       recordedBy: r[14], modelAbbr: r[15],
-      costPerPair: r[18], billPhotoLink: r[19], storeName: r[20], storeLocation: r[21]
+      costPerPair: r[18], billPhotoLink: r[19], storeName: r[20], storeLocation: r[21],
+      soleColor: r[22], rubberColor: r[23], pairNumber: r[24], side: r[25]
     });
   }
   return result;
@@ -245,7 +251,7 @@ function getAllTrials() {
       outcome: r[21], strikes: r[22], regionStruck: r[23],
       tempC: r[24], humidityPct: r[25], photoLinks: r[26], notes: r[27],
       trialStartTime: r[29], trialStopTime: r[30], trialDurationSec: r[31],
-      recordedBy: r[32]
+      recordedBy: r[32], trialTime: r[33]
     });
   }
   return result;
@@ -354,9 +360,11 @@ function registerBoot(data) {
   var missing = missingFields_(data, [
     { key: 'bootId', label: 'Boot ID' },
     { key: 'brandAbbr', label: 'Brand Abbr' },
-    { key: 'modelAbbr', label: 'Model Abbr' },
-    { key: 'brandFull', label: 'Brand Name' },
-    { key: 'size', label: 'Size' }
+    { key: 'soleColor', label: 'Sole Color' },
+    { key: 'rubberColor', label: 'Rubber Color' },
+    { key: 'pairNumber', label: 'Pair Number' },
+    { key: 'side', label: 'Left/Right' },
+    { key: 'brandFull', label: 'Brand Name' }
   ]);
   if (missing.length) {
     return { success: false, message: 'Missing: ' + missing.join(', ') };
@@ -386,7 +394,8 @@ function registerBoot(data) {
       data.thickT, data.thickLM, data.thickI,
       photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy), data.modelAbbr,
       '', '',
-      data.costPerPair, billLink, sanitizeCell_(data.storeName), sanitizeCell_(data.storeLocation)
+      data.costPerPair, billLink, sanitizeCell_(data.storeName), sanitizeCell_(data.storeLocation),
+      data.soleColor, data.rubberColor, data.pairNumber, data.side
     ]);
 
     return { success: true, message: 'Boot registered: ' + data.bootId };
@@ -395,11 +404,15 @@ function registerBoot(data) {
   }
 }
 
-// Boot_ID, Brand_Abbr, and Boot_Size are immutable on edit (the front-end
-// disables those fields) since they compose the ID — changing them would
-// mean renaming the row's key, not editing its data. Model_Abbr is NOT
-// locked: it was added after some boots were already registered, so a
-// legacy boot may need it filled in later without that meaning a rename.
+// Only Brand_Abbr is immutable on edit (the front-end disables that field)
+// since it's the true anchor of a boot's identity — changing it would mean
+// renaming the row's key, not editing its data. Everything else, including
+// the newer ID components (Sole_Color/Rubber_Color/Pair_Number/Side) and
+// Model_Abbr/Boot_Size, stays editable even for an already-registered
+// boot: several of these fields were added after some boots already
+// existed, so a legacy record needs to be completable without that
+// meaning a rename (Boot_ID itself is looked up by the pre-existing value
+// and never recomputed here, regardless of what the other fields say).
 // Photos/bill photo are only touched if a new one is attached, so editing
 // other fields never wipes out previously uploaded links.
 function updateBoot(data) {
@@ -453,6 +466,11 @@ function updateBoot(data) {
     newRow[18] = data.costPerPair;
     newRow[20] = sanitizeCell_(data.storeName);
     newRow[21] = sanitizeCell_(data.storeLocation);
+    if (data.size) newRow[4] = data.size;
+    if (data.soleColor) newRow[22] = data.soleColor;
+    if (data.rubberColor) newRow[23] = data.rubberColor;
+    if (data.pairNumber) newRow[24] = data.pairNumber;
+    if (data.side) newRow[25] = data.side;
 
     sheet.getRange(rowIdx + 1, 1, 1, BOOT_HEADERS.length).setValues([newRow]);
     return { success: true, message: 'Boot updated: ' + data.bootId };
@@ -605,7 +623,11 @@ function submitTrial(data) {
       data.trialStartTime ? "'" + data.trialStartTime : '',
       data.trialStopTime ? "'" + data.trialStopTime : '',
       data.trialDurationSec || '',
-      sanitizeCell_(data.recordedBy)
+      sanitizeCell_(data.recordedBy),
+      // Same leading-apostrophe guard as isoInTime itself — this is a copy
+      // of that same plain-text "yyyy-MM-dd HH:mm:ss" string, and would
+      // otherwise get silently reinterpreted as a real date/time cell.
+      data.trialTime ? "'" + data.trialTime : ''
     ]);
 
     return { success: true, message: 'Trial recorded: ' + data.trialId };
