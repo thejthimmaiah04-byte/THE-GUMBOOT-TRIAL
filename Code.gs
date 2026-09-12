@@ -147,6 +147,13 @@ function speciesDentition_(code) {
   return '';
 }
 
+// Auto-heals an existing sheet's header row against the current HEADERS
+// array whenever a schema change adds a new column, instead of requiring
+// someone to manually retype it into the live Sheet after every redeploy
+// (the recurring step this project kept needing). Only ever APPENDS
+// headers the sheet doesn't already have — it never reorders or removes
+// an existing one, since every read/write in this file addresses columns
+// by fixed position and a reorder would silently corrupt every row.
 function getOrCreateSheet_(name, headers) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(name);
@@ -155,6 +162,17 @@ function getOrCreateSheet_(name, headers) {
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
+    return sheet;
+  }
+
+  var lastCol = sheet.getLastColumn();
+  var existingHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+  var missingHeaders = headers.filter(function(h) { return existingHeaders.indexOf(h) === -1; });
+  if (missingHeaders.length > 0) {
+    var startCol = existingHeaders.length + 1;
+    var range = sheet.getRange(1, startCol, 1, missingHeaders.length);
+    range.setValues([missingHeaders]);
+    range.setFontWeight('bold');
   }
   return sheet;
 }
