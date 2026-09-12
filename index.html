@@ -1102,10 +1102,10 @@
       </div>
       <div>
         <label for="s-origin">Origin</label>
-        <select id="s-origin">
+        <select id="s-origin" onchange="updateSnakeId()">
           <option value="">-- select --</option>
-          <option value="Wild Caught">Wild Caught</option>
-          <option value="Captive">Captive</option>
+          <option value="W">W &mdash; Wild Caught</option>
+          <option value="C">C &mdash; Captive</option>
         </select>
       </div>
     </div>
@@ -2488,15 +2488,23 @@ function loadSnakeForEdit() {
   if (!s) return;
 
   editingSnakeId = id;
+  // The individual number is always the last ID segment, whether this is a
+  // current-scheme ID (Species-Origin-Age-Num) or a legacy one registered
+  // before Origin was added to the ID (Species-Age-Num) — Species/Age/
+  // Origin themselves come from their own sheet columns, not parsed here.
   var idParts = id.split('-');
   document.getElementById('s-species').value = s.speciesCode || '';
   document.getElementById('s-age').value = s.ageClass || '';
-  document.getElementById('s-num').value = idParts.length >= 3 ? parseInt(idParts[2], 10) : '';
+  document.getElementById('s-num').value = idParts.length ? parseInt(idParts[idParts.length - 1], 10) : '';
   document.getElementById('s-species').disabled = true;
   document.getElementById('s-age').disabled = true;
   document.getElementById('s-num').disabled = true;
 
   document.getElementById('s-sex').value = s.sex || 'U';
+  // Origin is NOT locked during edit — unlike Species/Age/Num it was added
+  // after some snakes may already exist, so a legacy record needs to be
+  // completable without that meaning a rename (Snake_ID lookup always uses
+  // the original editingSnakeId regardless of what Origin says here).
   document.getElementById('s-origin').value = s.origin || '';
   document.getElementById('s-tl').value = s.tl || '';
   document.getElementById('s-svl').value = s.svl || '';
@@ -3015,11 +3023,13 @@ function clearBootForm() {
 async function submitSnakeForm() {
   clearInvalid();
   var species = document.getElementById('s-species').value;
+  var origin = document.getElementById('s-origin').value;
   var age = document.getElementById('s-age').value;
   var num = document.getElementById('s-num').value.trim();
 
   var errors = [];
   if (!species) { errors.push('Species'); markInvalid('s-species'); }
+  if (!origin) { errors.push('Origin'); markInvalid('s-origin'); }
   if (!age) { errors.push('Age Class'); markInvalid('s-age'); }
   if (!num) { errors.push('Individual #'); markInvalid('s-num'); }
 
@@ -3030,7 +3040,10 @@ async function submitSnakeForm() {
 
   var padded = String(parseInt(num)).padStart(2, '0');
   var isEdit = !!editingSnakeId;
-  var snakeId = editingSnakeId || (species + '-' + age + '-' + padded);
+  // Snake ID = Species + Origin (W/C) + Age + Individual# — Origin is
+  // required for a new registration since it now composes the ID, but
+  // stays optional-to-change on edit (see loadSnakeForEdit).
+  var snakeId = editingSnakeId || (species + '-' + origin + '-' + age + '-' + padded);
 
   var tl = parseFloat(document.getElementById('s-tl').value) || '';
   var svl = parseFloat(document.getElementById('s-svl').value) || '';
@@ -3215,11 +3228,12 @@ function updateSnakeId() {
   var warn = document.getElementById('snake-id-warn');
   var submitBtn = document.getElementById('btn-submit-snake');
   var species = document.getElementById('s-species').value;
+  var origin = document.getElementById('s-origin').value;
   var age = document.getElementById('s-age').value;
   var num = document.getElementById('s-num').value.trim();
-  if (species && age && num) {
+  if (species && origin && age && num) {
     var padded = String(parseInt(num)).padStart(2, '0');
-    var snakeId = species + '-' + age + '-' + padded;
+    var snakeId = species + '-' + origin + '-' + age + '-' + padded;
     text.textContent = snakeId;
     badge.classList.remove('pending');
     var isDup = snakesCache.some(function(s) { return s.snakeId === snakeId; });
