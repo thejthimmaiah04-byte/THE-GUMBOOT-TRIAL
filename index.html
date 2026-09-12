@@ -2548,8 +2548,17 @@ function loadSnakeForEdit() {
   formDirty.snake = false;
 }
 
+// Rebuilding a <select>'s options via innerHTML resets its selection to
+// blank — and this runs on every background data refresh (the 60s sync
+// poll, reconnect, and the tab regaining focus, which happens every time
+// the camera closes after a trial photo), so without preserving the value
+// a boot/snake picked mid-trial would keep silently popping back to
+// unselected. Re-running onBootSelect/onSnakeSelect afterward also
+// refreshes selectedBoot/selectedSnake against the newly-fetched cache,
+// so the trial payload doesn't end up built from stale data either.
 function populateBootDropdown() {
   var sel = document.getElementById('t-boot');
+  var currentVal = sel.value;
   sel.innerHTML = '<option value="">-- select boot (' + bootsCache.length + ' registered) --</option>';
   bootsCache.forEach(function(b) {
     var opt = document.createElement('option');
@@ -2557,10 +2566,13 @@ function populateBootDropdown() {
     opt.textContent = b.bootId + ' — ' + b.brandFull + ' (Size ' + b.size + ')';
     sel.appendChild(opt);
   });
+  sel.value = currentVal;
+  if (sel.value) onBootSelect();
 }
 
 function populateSnakeDropdown() {
   var sel = document.getElementById('t-snake');
+  var currentVal = sel.value;
   sel.innerHTML = '<option value="">-- select snake (' + snakesCache.length + ' registered) --</option>';
   snakesCache.forEach(function(s) {
     var opt = document.createElement('option');
@@ -2568,6 +2580,8 @@ function populateSnakeDropdown() {
     opt.textContent = s.snakeId + ' — ' + s.commonName + ', ' + s.ageClass;
     sel.appendChild(opt);
   });
+  sel.value = currentVal;
+  if (sel.value) onSnakeSelect();
 }
 
 // ----- Auto-fill on selection -----
