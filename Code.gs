@@ -276,11 +276,40 @@ function getAllTrials() {
 }
 
 // ---------- Drive / image upload ----------
+// Everything lives under one main study folder, organized as:
+//   <Study Folder>/Boot Registration/<Boot_ID>/...   (sole, rubber, bill photos)
+//   <Study Folder>/Trial Images/<Trial_ID>/...        (balloon, region, additional photos)
+var STUDY_FOLDER_NAME = 'efficacy study of gumboots against snakebite';
+var BOOT_REG_SUBFOLDER_NAME = 'Boot Registration';
+var TRIAL_IMAGES_SUBFOLDER_NAME = 'Trial Images';
 
-function getOrCreateFolder_(name) {
-  var folders = DriveApp.getFoldersByName(name);
-  if (folders.hasNext()) return folders.next();
-  return DriveApp.createFolder(name);
+// Scoped to a specific parent folder (or Drive root when parent is null),
+// so an unrelated folder elsewhere in Drive that happens to share a name
+// is never mistaken for the right one — unlike a bare
+// DriveApp.getFoldersByName, which searches the whole Drive regardless of
+// location.
+function getOrCreateChildFolder_(parentFolder, name) {
+  var existing = parentFolder ? parentFolder.getFoldersByName(name) : DriveApp.getFoldersByName(name);
+  if (existing.hasNext()) return existing.next();
+  return parentFolder ? parentFolder.createFolder(name) : DriveApp.createFolder(name);
+}
+
+function getStudyRootFolder_() {
+  return getOrCreateChildFolder_(null, STUDY_FOLDER_NAME);
+}
+
+// Boot Registration/<Boot_ID> — every photo for that boot (sole, rubber,
+// bill/receipt) lives together in its own folder.
+function getBootFolder_(bootId) {
+  var bootRegFolder = getOrCreateChildFolder_(getStudyRootFolder_(), BOOT_REG_SUBFOLDER_NAME);
+  return getOrCreateChildFolder_(bootRegFolder, bootId);
+}
+
+// Trial Images/<Trial_ID> — every photo for that trial (balloon, per-region,
+// additional) lives together in its own folder.
+function getTrialFolder_(trialId) {
+  var trialImagesFolder = getOrCreateChildFolder_(getStudyRootFolder_(), TRIAL_IMAGES_SUBFOLDER_NAME);
+  return getOrCreateChildFolder_(trialImagesFolder, trialId);
 }
 
 function uploadImageToFolder_(folder, base64Data, fileName, mimeType) {
@@ -291,22 +320,18 @@ function uploadImageToFolder_(folder, base64Data, fileName, mimeType) {
   return file.getUrl();
 }
 
-function uploadImage_(base64Data, fileName, mimeType, folderName) {
-  var folder = getOrCreateFolder_(folderName || 'TLT_Gumboot_Trial_Photos');
-  return uploadImageToFolder_(folder, base64Data, fileName, mimeType);
-}
-
-function uploadPhotos_(photos, idPrefix) {
+function uploadBootPhotos_(photos, bootId) {
   var links = [];
   if (!photos || photos.length === 0) return links;
+  var folder = getBootFolder_(bootId);
   for (var i = 0; i < photos.length; i++) {
     if (photos[i] && photos[i].data) {
       try {
-        var fileName = idPrefix + '_' + photos[i].label + '.jpg';
-        var url = uploadImage_(photos[i].data, fileName, 'image/jpeg');
+        var fileName = bootId + '_' + photos[i].label + '.jpg';
+        var url = uploadImageToFolder_(folder, photos[i].data, fileName, 'image/jpeg');
         links.push(photos[i].label + ': ' + url);
       } catch (e) {
-        Logger.log('Photo upload failed for ' + idPrefix + ': ' + e.message);
+        Logger.log('Photo upload failed for ' + bootId + ': ' + e.message);
         links.push(photos[i].label + ': UPLOAD_FAILED');
       }
     }
@@ -314,57 +339,46 @@ function uploadPhotos_(photos, idPrefix) {
   return links;
 }
 
-// Bill/receipt photos go in their own Drive folder, separate from the boot
-// condition photos, and are tracked in their own sheet column rather than
-// mixed into Photo_Links — they document the purchase, not the gear itself.
-function uploadBillPhoto_(photo, idPrefix) {
+// Bill/receipt photo lives in the same per-boot folder as the rest of that
+// boot's registration photos — it's tracked in its own sheet column rather
+// than mixed into Photo_Links, since it documents the purchase rather than
+// the gear itself, but there's no reason for it to live in a separate part
+// of Drive.
+function uploadBootBillPhoto_(photo, bootId) {
   if (!photo || !photo.data) return '';
   try {
-    return uploadImage_(photo.data, idPrefix + '_bill.jpg', 'image/jpeg', 'TLT_Gumboot_Trial_Bills');
+    return uploadImageToFolder_(getBootFolder_(bootId), photo.data, bootId + '_bill.jpg', 'image/jpeg');
   } catch (e) {
-    Logger.log('Bill photo upload failed for ' + idPrefix + ': ' + e.message);
+    Logger.log('Bill photo upload failed for ' + bootId + ': ' + e.message);
     return 'UPLOAD_FAILED';
   }
 }
 
-// Each trial gets its own subfolder (inside the main photos folder) named
-// "<Snake_ID>_<Boot_ID>_<Date>", so a researcher browsing Drive can find a
-// specific trial's photos without hunting through one giant flat folder.
-function getOrCreateTrialPhotoFolder_(snakeId, bootId, dateStr) {
-  var parent = getOrCreateFolder_('TLT_Gumboot_Trial_Photos');
-  var folderName = snakeId + '_' + bootId + '_' + dateStr;
-  var existing = parent.getFoldersByName(folderName);
-  if (existing.hasNext()) return existing.next();
-  return parent.createFolder(folderName);
-}
-
 // Balloon gets a fixed descriptive name; a region photo (label
-// "region_<Name>", e.g. "region_Heel") is named with the snake, boot, date,
-// and struck region per-photo rather than just idPrefix, since the point is
-// to be unambiguous about which region it documents even outside the
-// per-trial folder; any further photos are all tagged "additional" and
-// numbered here in upload order (1, 2, 3...) since a trial can have more
-// than one.
-function uploadTrialPhotos_(photos, snakeId, bootId, dateStr) {
+// "region_<Name>", e.g. "region_Heel") is named with the trial ID and
+// struck region rather than just "additional", since the point is to be
+// unambiguous about which region it documents even outside the per-trial
+// folder; any further photos are all tagged "additional" and numbered here
+// in upload order (1, 2, 3...) since a trial can have more than one.
+function uploadTrialPhotos_(photos, trialId) {
   var links = [];
   if (!photos || photos.length === 0) return links;
-  var folder = getOrCreateTrialPhotoFolder_(snakeId, bootId, dateStr);
-  var idPrefix = snakeId + '_' + bootId;
+  var folder = getTrialFolder_(trialId);
   var additionalCount = 0;
   for (var i = 0; i < photos.length; i++) {
     var p = photos[i];
     if (!p || !p.data) continue;
     var niceName;
-    if (p.label === 'balloon') niceName = idPrefix + '_Balloon photo';
+    if (p.label === 'balloon') niceName = trialId + '_Balloon photo';
     else if (p.label && p.label.indexOf('region_') === 0) {
-      niceName = idPrefix + '_' + dateStr + '_' + p.label.slice('region_'.length);
+      niceName = trialId + '_' + p.label.slice('region_'.length);
     }
-    else { additionalCount++; niceName = idPrefix + '_Additional photo ' + additionalCount; }
+    else { additionalCount++; niceName = trialId + '_Additional photo ' + additionalCount; }
     try {
       var url = uploadImageToFolder_(folder, p.data, niceName + '.jpg', 'image/jpeg');
       links.push(niceName + ': ' + url);
     } catch (e) {
-      Logger.log('Trial photo upload failed for ' + idPrefix + ': ' + e.message);
+      Logger.log('Trial photo upload failed for ' + trialId + ': ' + e.message);
       links.push(niceName + ': UPLOAD_FAILED');
     }
   }
@@ -409,8 +423,8 @@ function registerBoot(data) {
 
     var bootPhotos = (data.photos || []).filter(function(p) { return p && p.label !== 'bill'; });
     var billPhoto = (data.photos || []).filter(function(p) { return p && p.label === 'bill'; })[0];
-    var photoLinks = uploadPhotos_(bootPhotos, data.bootId);
-    var billLink = uploadBillPhoto_(billPhoto, data.bootId);
+    var photoLinks = uploadBootPhotos_(bootPhotos, data.bootId);
+    var billLink = uploadBootBillPhoto_(billPhoto, data.bootId);
 
     sheet.appendRow([
       data.bootId, data.brandAbbr, sanitizeCell_(data.brandFull), sanitizeCell_(data.model),
@@ -469,11 +483,11 @@ function updateBoot(data) {
     var bootPhotos = (data.photos || []).filter(function(p) { return p && p.label !== 'bill'; });
     var billPhoto = (data.photos || []).filter(function(p) { return p && p.label === 'bill'; })[0];
     if (bootPhotos.length) {
-      var uploaded = uploadPhotos_(bootPhotos, data.bootId);
+      var uploaded = uploadBootPhotos_(bootPhotos, data.bootId);
       if (uploaded.length) newRow[12] = uploaded.join('\n');
     }
     if (billPhoto) {
-      var billLink = uploadBillPhoto_(billPhoto, data.bootId);
+      var billLink = uploadBootBillPhoto_(billPhoto, data.bootId);
       if (billLink) newRow[19] = billLink;
     }
     newRow[2] = sanitizeCell_(data.brandFull);
@@ -630,7 +644,7 @@ function submitTrial(data) {
       }
     }
 
-    var photoLinks = uploadTrialPhotos_(data.photos, data.snakeId, data.bootId, data.date);
+    var photoLinks = uploadTrialPhotos_(data.photos, data.trialId);
 
     // Leading apostrophe forces plain text so Sheets doesn't auto-detect
     // "HH:MM:SS" as a real time value and corrupt it on the next read-back
