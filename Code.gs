@@ -493,7 +493,12 @@ function updateBoot(data) {
     newRow[2] = sanitizeCell_(data.brandFull);
     newRow[3] = sanitizeCell_(data.model);
     newRow[6] = sanitizeCell_(data.isStandard);
-    newRow[7] = sanitizeCell_(data.mfgDate);
+    // Only-if-provided: the front-end switched Mfg Date to a strict
+    // YYYY-MM month picker, which silently renders blank for any legacy
+    // value it can't parse into that exact format (e.g. a bare year like
+    // "2017"). Overwriting unconditionally would blank out that real data
+    // the moment someone opens the boot for an unrelated edit and saves.
+    if (data.mfgDate) newRow[7] = sanitizeCell_(data.mfgDate);
     newRow[8] = sanitizeCell_(data.batch);
     newRow[9] = data.thickT;
     newRow[10] = data.thickLM;
