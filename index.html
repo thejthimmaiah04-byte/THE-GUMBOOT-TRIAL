@@ -2095,6 +2095,33 @@ function buildDonutHtml_(segments, centerValue, centerLabel) {
     '</div>';
 }
 
+// Vertical column chart (plain inline SVG, no library) for region-struck
+// counts, with a dashed horizontal reference line marking the total trial
+// count so each region's bar can be visually judged against the whole
+// study's size rather than just against each other.
+function buildRegionStruckChartSvg_(regionOrder, counts, totalTrials) {
+  var w = 320, h = 180, padTop = 22, padBottom = 28, padLeft = 8, padRight = 8;
+  var plotH = h - padTop - padBottom;
+  var barSlot = (w - padLeft - padRight) / regionOrder.length;
+  var maxVal = Math.max(totalTrials, 1);
+  var barsHtml = regionOrder.map(function(r, i) {
+    var count = counts[r] || 0;
+    var barH = Math.round((count / maxVal) * plotH);
+    var bw = barSlot * 0.55;
+    var x = padLeft + i * barSlot + (barSlot - bw) / 2;
+    var y = padTop + (plotH - barH);
+    return '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + Math.max(barH, count > 0 ? 2 : 0) + '" rx="3" fill="var(--green)"></rect>' +
+      '<text x="' + (x + bw / 2) + '" y="' + (y - 4) + '" font-size="10" text-anchor="middle" fill="var(--text)">' + count + '</text>' +
+      '<text x="' + (x + bw / 2) + '" y="' + (h - padBottom + 14) + '" font-size="10" text-anchor="middle" fill="var(--text-mid)">' + r + '</text>';
+  }).join('');
+  return '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%; height:170px; overflow:visible;">' +
+      '<line x1="' + padLeft + '" y1="' + padTop + '" x2="' + (w - padRight) + '" y2="' + padTop + '" ' +
+        'stroke="var(--danger)" stroke-width="1.5" stroke-dasharray="5,3"></line>' +
+      '<text x="' + padLeft + '" y="' + (padTop - 6) + '" font-size="10" fill="var(--danger)">Total trials: ' + totalTrials + '</text>' +
+      barsHtml +
+    '</svg>';
+}
+
 function renderResultsAnalytics() {
   var el = document.getElementById('results-analytics-body');
   if (!el) return;
@@ -2147,6 +2174,28 @@ function renderResultsAnalytics() {
     '<div class="stat-tile"><div class="stat-value">' + rangeOf_(envHumids, '%') + '</div><div class="stat-label">Humidity Range</div></div>' +
     '</div><div class="stat-caption">Based on ' + envTemps.length + ' trial' + (envTemps.length === 1 ? '' : 's') + ' with temperature logged and ' +
     envHumids.length + ' with humidity logged, out of ' + total + ' total trials.</div></div>';
+
+  // ----- Trials by Region Struck (with a total-trials reference line) -----
+  // All 7 regions are always listed, even with zero trials, so the chart
+  // always shows the full body map rather than only whichever regions
+  // happen to have been hit. Counted from the plain Region_Struck list
+  // (present on every trial since that feature existed) rather than the
+  // newer per-region outcome data, so this reflects the full trial
+  // history, not just trials logged after outcomes-per-region existed.
+  var REGION_ORDER_ = ['T', 'LM', 'IM', 'H', 'A', 'S', 'U'];
+  var regionStruckCounts_ = {};
+  REGION_ORDER_.forEach(function(r) { regionStruckCounts_[r] = 0; });
+  trials.forEach(function(t) {
+    if (!t.regionStruck) return;
+    String(t.regionStruck).split('/').forEach(function(r) {
+      r = r.trim();
+      if (r && regionStruckCounts_.hasOwnProperty(r)) regionStruckCounts_[r]++;
+    });
+  });
+  var regionStruckChartHtml = '<div class="card"><div class="card-title">Trials by Region Struck</div>' +
+    buildRegionStruckChartSvg_(REGION_ORDER_, regionStruckCounts_, total) +
+    '<div class="stat-caption">Bar height = number of trials that struck that region (a trial can strike more than one, so bars don\'t need to add up to the total). The dashed line marks the total number of trials conducted so far (' + total + ').</div>' +
+    '</div>';
 
   // ----- Outcome distribution donut -----
   var gradientParts = [];
@@ -2339,7 +2388,7 @@ function renderResultsAnalytics() {
       : trendRowsHtml + '<div class="stat-caption">Each bar is one month\'s full outcome mix (see legend above) — a bar getting greener/less red over time means the boots are holding up better as trials continue.</div>') +
     '</div>';
 
-  el.innerHTML = statsHtml + envHtml + donutHtml + certCountHtml + certSuccessHtml + nonCertSuccessHtml + costHtml +
+  el.innerHTML = statsHtml + envHtml + regionStruckChartHtml + donutHtml + certCountHtml + certSuccessHtml + nonCertSuccessHtml + costHtml +
     bootTypeHtml + bootHtml + speciesHtml + regionHtml + individualHtml + trendHtml;
 }
 
