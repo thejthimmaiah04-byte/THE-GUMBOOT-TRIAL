@@ -2261,6 +2261,40 @@ function renderResultsAnalytics() {
   var speciesHtml = '<div class="card"><div class="card-title">Puncture Rate by Species</div>' +
     buildBarChartHtml_(bySpecies, 'No completed trials with a struck outcome yet.') + '</div>';
 
+  // ----- Puncture rate by region struck -----
+  // Parses the granular per-region regionOutcomes field ("T:Puncture,
+  // LM:No Puncture") rather than the whole-trial outcome, since one trial
+  // can strike several regions with different individual results — using
+  // the trial-level outcome would misattribute a puncture (or a clean
+  // hit) to a region that wasn't actually the one struck that way. Blank
+  // (never classified) and Inconclusive region outcomes are excluded from
+  // the rate, same reasoning as the other puncture-rate exclusions.
+  var regionGroups = {};
+  trials.forEach(function(t) {
+    if (!t.regionOutcomes) return;
+    String(t.regionOutcomes).split(',').forEach(function(pair) {
+      var parts = pair.split(':');
+      if (parts.length < 2) return;
+      var region = parts[0].trim();
+      var outcome = parts[1].trim();
+      if (!region || !outcome || outcome === 'Inconclusive') return;
+      if (!regionGroups[region]) {
+        regionGroups[region] = { key: region, label: (REGION_NAMES[region] || region), total: 0, punctures: 0 };
+      }
+      regionGroups[region].total++;
+      if (outcome === 'Puncture') regionGroups[region].punctures++;
+    });
+  });
+  var byRegion = Object.keys(regionGroups).map(function(k) {
+    var g = regionGroups[k];
+    g.rate = g.total ? Math.round((g.punctures / g.total) * 100) : 0;
+    return g;
+  }).sort(function(a, b) { return b.rate - a.rate || b.total - a.total; });
+  var regionHtml = '<div class="card"><div class="card-title">Puncture Rate by Region Struck</div>' +
+    buildBarChartHtml_(byRegion, 'No per-region outcome data recorded yet.') +
+    '<div class="stat-caption">Based on the Puncture/No Puncture classification recorded per struck region — trials logged before that feature, or a region left Inconclusive, aren\'t counted here.</div>' +
+    '</div>';
+
   // ----- Trials per individual (session count) -----
   // "Session" here = how many trials this specific individual snake has been
   // used in to date — a running usage count per animal, not a field-visit
@@ -2306,7 +2340,7 @@ function renderResultsAnalytics() {
     '</div>';
 
   el.innerHTML = statsHtml + envHtml + donutHtml + certCountHtml + certSuccessHtml + nonCertSuccessHtml + costHtml +
-    bootTypeHtml + bootHtml + speciesHtml + individualHtml + trendHtml;
+    bootTypeHtml + bootHtml + speciesHtml + regionHtml + individualHtml + trendHtml;
 }
 
 // ----- Load registries -----
