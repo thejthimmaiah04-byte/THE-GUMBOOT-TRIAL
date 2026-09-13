@@ -968,10 +968,15 @@
         <input type="number" id="b-pair-num" min="1" max="99" inputmode="numeric" placeholder="e.g. 1" oninput="updateBootId()">
       </div>
       <div>
-        <label>Left / Right Boot</label>
-        <div class="row" style="margin-top:0">
-          <button type="button" class="btn-toggle" id="btn-side-left" onclick="setBootSide('L'); formDirty.boot = true;" style="margin-top:0">Left</button>
-          <button type="button" class="btn-toggle" id="btn-side-right" onclick="setBootSide('R'); formDirty.boot = true;" style="margin-top:0">Right</button>
+        <div id="b-side-field" style="display:none">
+          <label>Left / Right Boot</label>
+          <div class="row" style="margin-top:0">
+            <button type="button" class="btn-toggle" id="btn-side-left" onclick="setBootSide('L'); formDirty.boot = true;" style="margin-top:0">Left</button>
+            <button type="button" class="btn-toggle" id="btn-side-right" onclick="setBootSide('R'); formDirty.boot = true;" style="margin-top:0">Right</button>
+          </div>
+        </div>
+        <div id="b-side-auto-note" style="font-size:12px; color:var(--text-mid); margin-top:22px;">
+          Left &amp; Right registered together automatically
         </div>
       </div>
     </div>
@@ -2453,6 +2458,8 @@ function loadBootForEdit() {
   if (!b) return;
 
   editingBootId = id;
+  document.getElementById('b-side-field').style.display = 'block';
+  document.getElementById('b-side-auto-note').style.display = 'none';
   document.getElementById('b-abbr').value = b.brandAbbr || '';
   document.getElementById('b-abbr').disabled = true;
   // Only Brand Abbr is locked during edit — it's the true anchor of the
@@ -3029,6 +3036,22 @@ function resetTrialTiming() {
 }
 
 // ----- Submit: Boot -----
+// Sends one boot registerBoot/updateBoot payload, falling back to the
+// offline queue on failure — shared by the single-boot edit path and each
+// half of a new-registration pair, so both report results the same way.
+function submitBootPayload_(actionName, data) {
+  return apiPost(actionName, data)
+    .then(function(result) {
+      return { success: result.success, message: result.message };
+    })
+    .catch(function() {
+      var queued = queueSubmission(actionName, data);
+      return queued
+        ? { success: true, message: data.bootId + ': queued offline, will retry automatically' }
+        : { success: false, message: data.bootId + ': could not queue offline (device storage full) — NOT saved' };
+    });
+}
+
 async function submitBootForm() {
   clearInvalid();
   var isEdit = !!editingBootId;
@@ -3039,10 +3062,11 @@ async function submitBootForm() {
   var modelAbbr = document.getElementById('b-model-abbr').value.trim().toUpperCase();
   var size = document.getElementById('b-size').value.trim();
   var brandFull = document.getElementById('b-brand').value.trim();
+  var certified = bootCertified;
 
   var errors = [];
   // ID-composing fields are locked (disabled) during edit only for Brand
-  // Abbr — the true anchor of a boot's identity. Colors/pair/side are left
+  // Abbr — the true anchor of a boot's identity. Colors/pair are left
   // editable even during edit so a boot registered before this scheme (or
   // with a typo) can still be corrected/completed; Boot_ID itself never
   // changes on edit since the lookup always uses the original editingBootId.
@@ -3052,16 +3076,13 @@ async function submitBootForm() {
   if (!soleColor) { errors.push('Sole Color'); markInvalid('b-sole-color'); }
   if (!rubberColor) { errors.push('Rubber Color'); markInvalid('b-rubber-color'); }
   if (!pairNum) { errors.push('Pair Number'); markInvalid('b-pair-num'); }
-  if (!bootSide) { errors.push('Left/Right'); }
+  if (isEdit && !bootSide) { errors.push('Left/Right'); }
   if (!brandFull) { errors.push('Brand Name'); markInvalid('b-brand'); }
 
   if (errors.length > 0) {
     showToast('Missing: ' + errors.join(', '), 'error');
     return;
   }
-
-  var bootId = editingBootId || computeBootId_(abbr, soleColor, rubberColor, pairNum, bootSide);
-  var certified = bootCertified;
 
   var thickT = parseFloat(document.getElementById('b-thick-t').value) || '';
   var thickLM = parseFloat(document.getElementById('b-thick-lm').value) || '';
@@ -3070,7 +3091,22 @@ async function submitBootForm() {
   if (!checkRange('Thickness LM', thickLM, 0.5, 20)) return;
   if (!checkRange('Thickness I', thickI, 0.5, 20)) return;
 
-  showLoading(isEdit ? 'Saving changes...' : 'Registering boot...');
+  // New registrations auto-create both Left and Right as a pair, so check
+  // both prospective IDs for a conflict up front rather than one.
+  var baseId = abbr + '-' + soleColor + '-' + rubberColor + '-' + pairNum;
+  var bootIdL = baseId + '-L';
+  var bootIdR = baseId + '-R';
+  if (!isEdit) {
+    var conflicts = [bootIdL, bootIdR].filter(function(id) {
+      return bootsCache.some(function(b) { return b.bootId === id; });
+    });
+    if (conflicts.length) {
+      showToast('Already registered: ' + conflicts.join(', '), 'error');
+      return;
+    }
+  }
+
+  showLoading(isEdit ? 'Saving changes...' : 'Registering boot pair (Left + Right)...');
 
   var photos = await collectPhotos([
     { id: 'b-photo-lat', label: 'sole' },
@@ -3080,50 +3116,48 @@ async function submitBootForm() {
 
   var costPerPair = parseFloat(document.getElementById('b-cost').value) || '';
 
-  var data = {
-    bootId: bootId,
-    brandAbbr: abbr,
-    soleColor: soleColor,
-    rubberColor: rubberColor,
-    pairNumber: pairNum,
-    side: bootSide,
-    modelAbbr: modelAbbr,
-    brandFull: brandFull,
-    model: document.getElementById('b-model').value.trim(),
-    size: size ? parseInt(size) : '',
-    isStandard: certified ? document.getElementById('b-is').value.trim() : 'Not Certified',
-    mfgDate: document.getElementById('b-mfg').value.trim(),
-    batch: document.getElementById('b-batch').value.trim(),
-    thickT: thickT, thickLM: thickLM, thickI: thickI,
-    costPerPair: costPerPair,
-    storeName: document.getElementById('b-store-name').value.trim(),
-    storeLocation: document.getElementById('b-store-location').value.trim(),
-    recordedBy: getRecorderName(),
-    photos: photos
-  };
+  function buildData(bootId, side) {
+    return {
+      bootId: bootId,
+      brandAbbr: abbr,
+      soleColor: soleColor,
+      rubberColor: rubberColor,
+      pairNumber: pairNum,
+      side: side,
+      modelAbbr: modelAbbr,
+      brandFull: brandFull,
+      model: document.getElementById('b-model').value.trim(),
+      size: size ? parseInt(size) : '',
+      isStandard: certified ? document.getElementById('b-is').value.trim() : 'Not Certified',
+      mfgDate: document.getElementById('b-mfg').value.trim(),
+      batch: document.getElementById('b-batch').value.trim(),
+      thickT: thickT, thickLM: thickLM, thickI: thickI,
+      costPerPair: costPerPair,
+      storeName: document.getElementById('b-store-name').value.trim(),
+      storeLocation: document.getElementById('b-store-location').value.trim(),
+      recordedBy: getRecorderName(),
+      photos: photos
+    };
+  }
 
-  var actionName = isEdit ? 'updateBoot' : 'registerBoot';
-  apiPost(actionName, data)
-    .then(function(result) {
-      hideLoading();
-      if (result.success) {
-        showToast(result.message, 'success');
-        clearBootForm();
-        loadRegistries();
-      } else {
-        showToast(result.message, 'error');
-      }
-    })
-    .catch(function(err) {
-      hideLoading();
-      var queued = queueSubmission(actionName, data);
-      if (queued) {
-        showToast('No connection — queued (' + getPendingQueue().length + ' pending), will retry automatically', 'warn');
-        clearBootForm();
-      } else {
-        showToast('Could not queue offline (device storage full) — this entry was NOT saved. Stay on this page and retry once online.', 'error');
-      }
-    });
+  if (isEdit) {
+    var result = await submitBootPayload_('updateBoot', buildData(editingBootId, bootSide));
+    hideLoading();
+    showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) { clearBootForm(); loadRegistries(); }
+    return;
+  }
+
+  // New registration — register Left then Right as two separate boot
+  // records sharing everything else entered once, since each physical
+  // boot (not the pair) is its own row (see Boot_ID scheme note above).
+  var resultL = await submitBootPayload_('registerBoot', buildData(bootIdL, 'L'));
+  var resultR = await submitBootPayload_('registerBoot', buildData(bootIdR, 'R'));
+  hideLoading();
+
+  var allOk = resultL.success && resultR.success;
+  showToast(resultL.message + ' | ' + resultR.message, allOk ? 'success' : 'error');
+  if (allOk) { clearBootForm(); loadRegistries(); }
 }
 
 function clearBootForm() {
@@ -3141,6 +3175,8 @@ function clearBootForm() {
   });
   document.getElementById('b-bill-existing').style.display = 'none';
   document.getElementById('b-abbr').disabled = false;
+  document.getElementById('b-side-field').style.display = 'none';
+  document.getElementById('b-side-auto-note').style.display = 'block';
   document.getElementById('btn-submit-boot').textContent = 'Register Boot';
   document.getElementById('edit-boot-select').value = '';
   editingBootId = null;
@@ -3334,14 +3370,39 @@ function updateBootId() {
   var soleColor = document.getElementById('b-sole-color').value.trim().toUpperCase();
   var rubberColor = document.getElementById('b-rubber-color').value.trim().toUpperCase();
   var pairNum = document.getElementById('b-pair-num').value.trim();
-  var bootId = computeBootId_(abbr, soleColor, rubberColor, pairNum, bootSide);
-  if (bootId) {
-    text.textContent = bootId;
+
+  if (editingBootId) {
+    var bootId = computeBootId_(abbr, soleColor, rubberColor, pairNum, bootSide);
+    if (bootId) {
+      text.textContent = bootId;
+      badge.classList.remove('pending');
+      var isDup = bootsCache.some(function(b) { return b.bootId === bootId; });
+      badge.classList.toggle('duplicate', isDup);
+      warn.style.display = isDup ? 'block' : 'none';
+      if (submitBtn) submitBtn.disabled = isDup;
+    } else {
+      text.textContent = 'Fill details above';
+      badge.classList.add('pending');
+      badge.classList.remove('duplicate');
+      warn.style.display = 'none';
+      if (submitBtn) submitBtn.disabled = false;
+    }
+    return;
+  }
+
+  // New registration: Left and Right are auto-created together as a pair
+  // (no side picker shown), so preview both resulting IDs up front instead
+  // of just one.
+  if (abbr && soleColor && rubberColor && pairNum) {
+    var baseId = abbr + '-' + soleColor + '-' + rubberColor + '-' + pairNum;
+    var idL = baseId + '-L';
+    var idR = baseId + '-R';
+    text.textContent = idL + '  &  ' + idR;
     badge.classList.remove('pending');
-    var isDup = bootsCache.some(function(b) { return b.bootId === bootId; });
-    badge.classList.toggle('duplicate', isDup);
-    warn.style.display = isDup ? 'block' : 'none';
-    if (submitBtn) submitBtn.disabled = isDup;
+    var anyDup = [idL, idR].some(function(id) { return bootsCache.some(function(b) { return b.bootId === id; }); });
+    badge.classList.toggle('duplicate', anyDup);
+    warn.style.display = anyDup ? 'block' : 'none';
+    if (submitBtn) submitBtn.disabled = anyDup;
   } else {
     text.textContent = 'Fill details above';
     badge.classList.add('pending');
