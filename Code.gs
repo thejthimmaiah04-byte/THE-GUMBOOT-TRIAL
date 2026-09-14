@@ -525,7 +525,15 @@ function updateBoot(data) {
     if (data.pairNumber) newRow[24] = data.pairNumber;
     if (data.side) newRow[25] = data.side;
 
-    sheet.getRange(rowIdx + 1, 1, 1, BOOT_HEADERS.length).setValues([newRow]);
+    // Width = newRow.length, not BOOT_HEADERS.length — some rows in this
+    // sheet already have more columns than the current schema (left over
+    // from an earlier version of this script that auto-healed extra
+    // headers in before the schema was consolidated down to 26). newRow
+    // preserves whatever was already there past column 26 unchanged;
+    // writing back with a hard-coded 26-wide range instead of the row's
+    // real width made Sheets reject the write outright ("data has 42 but
+    // the range has 26").
+    sheet.getRange(rowIdx + 1, 1, 1, newRow.length).setValues([newRow]);
     return { success: true, message: 'Boot updated: ' + data.bootId };
   } finally {
     lock.releaseLock();
@@ -625,7 +633,10 @@ function updateSnake(data) {
     newRow[21] = todayDateStr_();
     if (data.origin) newRow[22] = data.origin;
 
-    sheet.getRange(rowIdx + 1, 1, 1, SNAKE_HEADERS.length).setValues([newRow]);
+    // Width = newRow.length, not SNAKE_HEADERS.length — same reasoning as
+    // updateBoot: a hard-coded schema width breaks if this row already has
+    // more columns than the current schema defines.
+    sheet.getRange(rowIdx + 1, 1, 1, newRow.length).setValues([newRow]);
     return { success: true, message: 'Snake updated: ' + data.snakeId };
   } finally {
     lock.releaseLock();
