@@ -356,8 +356,29 @@
     .bar-row .bar-label-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; margin-bottom: 4px; gap: 8px; }
     .bar-row .bl-name { font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .bar-row .bl-val { color: var(--text-mid); flex-shrink: 0; font-size: 12px; }
+    .small-sample-note { color: var(--amber-dark); flex-shrink: 0; font-size: 12px; font-style: italic; }
     .bar-track { height: 11px; background: var(--bg); border-radius: 6px; overflow: hidden; }
     .bar-fill { height: 100%; border-radius: 6px; }
+    /* A rate built from under 5 trials shouldn't look as visually confident
+       as one built from 50 — a plain solid bar can't tell the reader that
+       just from its length. The stripe is an explicit, opt-in "read with
+       caution" cue rather than decoration (per dataviz texture guidance),
+       paired with the small-sample-note text so it never relies on the
+       stripe alone. */
+    .bar-fill-muted {
+      opacity: 0.6;
+      background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.4) 0, rgba(255,255,255,0.4) 3px, transparent 3px, transparent 7px);
+    }
+
+    .analytics-section-header {
+      font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
+      color: var(--text-light); margin: 22px 2px 8px;
+    }
+    .analytics-section-header:first-child { margin-top: 0; }
+
+    .summary-split-bar { display: flex; height: 20px; border-radius: 5px; overflow: hidden; margin-bottom: 10px; }
+    .summary-split-seg { height: 100%; }
+    .summary-split-seg + .summary-split-seg { margin-left: 2px; }
 
     .trend-row { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
     .trend-row:first-child { margin-top: 0; }
@@ -2119,11 +2140,14 @@ function groupPunctureRate_(trials, keyFn, labelFn) {
 function buildBarChartHtml_(rows, emptyMsg) {
   if (rows.length === 0) return '<div class="empty-state">' + emptyMsg + '</div>';
   return rows.map(function(g) {
-    var smallSample = g.total < 5 ? ' <span class="small-sample-note">(n=' + g.total + ', small sample)</span>' : ' <span class="bl-val">(n=' + g.total + ')</span>';
+    var smallSample = g.total < 5;
+    var note = smallSample
+      ? ' <span class="small-sample-note">(n=' + g.total + ', small sample)</span>'
+      : ' <span class="bl-val">(n=' + g.total + ')</span>';
     return '<div class="bar-row">' +
       '<div class="bar-label-row"><span class="bl-name">' + escapeHtml_(g.label) + '</span>' +
-        '<span class="bl-val">' + g.rate + '% puncture' + smallSample + '</span></div>' +
-      '<div class="bar-track"><div class="bar-fill" style="width:' + g.rate + '%; background:var(--danger)"></div></div>' +
+        '<span class="bl-val">' + g.rate + '% puncture' + note + '</span></div>' +
+      '<div class="bar-track"><div class="bar-fill' + (smallSample ? ' bar-fill-muted' : '') + '" style="width:' + g.rate + '%; background-color:var(--danger)"></div></div>' +
     '</div>';
   }).join('');
 }
@@ -2214,10 +2238,14 @@ function buildRegionStruckChartSvg_(regionOrder, speciesList, countsBySpecies, t
     var labelX = groupX + groupW / 2;
     return groupSvg + '<text x="' + labelX + '" y="' + (h - padBottom + 14) + '" font-size="10" text-anchor="middle" fill="var(--text-mid)">' + r + '</text>';
   }).join('');
+  // Solid, not dashed — a dashed line conventionally reads as a threshold
+  // or projection, which this isn't; it's just a plain count. Neutral
+  // text-mid color rather than a status color (red/green/amber), since
+  // this line doesn't mean "good" or "bad," only "here's the total."
   return '<svg viewBox="0 0 ' + w + ' ' + h + '" style="width:100%; height:170px; overflow:visible;">' +
       '<line x1="' + padLeft + '" y1="' + padTop + '" x2="' + (w - padRight) + '" y2="' + padTop + '" ' +
-        'stroke="var(--danger)" stroke-width="1.5" stroke-dasharray="5,3"></line>' +
-      '<text x="' + padLeft + '" y="' + (padTop - 6) + '" font-size="10" fill="var(--danger)">Total trials: ' + totalTrials + '</text>' +
+        'stroke="var(--text-mid)" stroke-width="1.5"></line>' +
+      '<text x="' + padLeft + '" y="' + (padTop - 6) + '" font-size="10" fill="var(--text-mid)">Total trials: ' + totalTrials + '</text>' +
       barsHtml +
     '</svg>';
 }
@@ -2287,7 +2315,13 @@ function renderResultsAnalytics() {
   // region that's mostly being tested on one species doesn't look the
   // same as one tested evenly across all of them.
   var REGION_ORDER_ = ['T', 'LM', 'IM', 'H', 'A', 'S', 'U'];
-  var SPECIES_COLOR_PALETTE_ = ['var(--green)', 'var(--amber)', 'var(--blue)', '#8e44ad', '#16a085', 'var(--danger)'];
+  // Deliberately distinct from every status color used elsewhere on this
+  // page (green=success/certified, amber=small-sample warning, red=
+  // puncture/failure, purple=the "Venom on boot" outcome) — reusing any of
+  // those for species identity risked a species' bars being unconsciously
+  // read as "good" or "bad" rather than just "which species." Validated
+  // colorblind-safe as a set (scripts/validate_palette.js, all checks pass).
+  var SPECIES_COLOR_PALETTE_ = ['#1e6fd9', '#16a085', '#c2185b', '#b8860b'];
   var speciesInData_ = [];
   trials.forEach(function(t) {
     if (t.speciesCode && speciesInData_.indexOf(t.speciesCode) === -1) speciesInData_.push(t.speciesCode);
@@ -2316,10 +2350,25 @@ function renderResultsAnalytics() {
   var regionStruckChartHtml = '<div class="card"><div class="card-title">Trials by Region Struck</div>' +
     buildRegionStruckChartSvg_(REGION_ORDER_, speciesList_, regionSpeciesCounts_, total) +
     (speciesList_.length ? '<div class="legend" style="margin-top:8px;">' + speciesLegendHtml + '</div>' : '') +
-    '<div class="stat-caption">Bar height = number of trials that struck that region (a trial can strike more than one, so bars don\'t need to add up to the total), split by species. The dashed line marks the total number of trials conducted so far (' + total + ').<br>' + regionLegendHtml + '</div>' +
+    '<div class="stat-caption">Bar height = number of trials that struck that region (a trial can strike more than one, so bars don\'t need to add up to the total), split by species. The horizontal line marks the total number of trials conducted so far (' + total + ').<br>' + regionLegendHtml + '</div>' +
     '</div>';
 
   // ----- Outcome distribution donut -----
+  // A flat 6-slice donut treats "No puncture," "No puncture (fang marks),"
+  // and "Venom on boot" as equally distinct from "Puncture" as they are
+  // from each other — losing the fact that the real first-order story is
+  // just Success vs Failure vs Excluded. The summary bar above the donut
+  // states that 3-way split directly; the donut still gives the full
+  // outcome-by-outcome breakdown underneath.
+  var summarySplitHtml = '<div class="summary-split-bar">' +
+    (successCount ? '<div class="summary-split-seg" style="flex:' + successCount + '; background:var(--green)"></div>' : '') +
+    (failureCount ? '<div class="summary-split-seg" style="flex:' + failureCount + '; background:var(--danger)"></div>' : '') +
+    (excludedCount ? '<div class="summary-split-seg" style="flex:' + excludedCount + '; background:#b0b8bc"></div>' : '') +
+  '</div><div class="legend" style="flex-direction:row; flex-wrap:wrap; gap:14px; margin-bottom:14px;">' +
+    '<div class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span>Success — ' + successCount + '</span></div>' +
+    '<div class="legend-item"><span class="legend-dot" style="background:var(--danger)"></span><span>Failure — ' + failureCount + '</span></div>' +
+    '<div class="legend-item"><span class="legend-dot" style="background:#b0b8bc"></span><span>Excluded — ' + excludedCount + '</span></div>' +
+  '</div>';
   var gradientParts = [];
   var cursor = 0;
   var legendHtml = '';
@@ -2333,27 +2382,26 @@ function renderResultsAnalytics() {
       '<span>' + o + ' &mdash; ' + meta.label + '</span><span class="lg-count">' + counts[o] + '</span></div>';
   });
   var donutHtml = '<div class="card"><div class="card-title">Outcome Distribution</div>' +
+    summarySplitHtml +
     '<div class="donut-wrap">' +
       '<div class="donut" style="background:conic-gradient(' + gradientParts.join(', ') + ')">' +
         '<div class="donut-hole"><div class="dh-value">' + total + '</div><div class="dh-label">Trials</div></div>' +
       '</div>' +
       '<div class="legend">' + legendHtml + '</div>' +
-    '</div></div>';
-
-  // ----- Certified vs Non-Certified boots (of everything registered) -----
-  var certifiedBoots = bootsCache.filter(isBootCertified_).length;
-  var nonCertifiedBoots = bootsCache.length - certifiedBoots;
-  var certCountHtml = '<div class="card"><div class="card-title">Certified vs Non-Certified Boots</div>' +
-    buildDonutHtml_([
-      { label: 'Certified', count: certifiedBoots, color: 'var(--green)' },
-      { label: 'Not certified', count: nonCertifiedBoots, color: 'var(--blue)' }
-    ], bootsCache.length, 'Boots') +
+    '</div>' +
+    '<div class="stat-caption">Top bar groups every outcome into Success/Failure/Excluded; the donut below breaks each of those down by the exact recorded outcome.</div>' +
     '</div>';
 
-  // ----- Success rate: certified vs non-certified boots, independently -----
-  // Joins each trial back to its boot's certification status (trials don't
-  // store this directly) using the same success/failure/excluded rules as
-  // the headline protection rate.
+  // ----- Boot certification: coverage & performance, combined -----
+  // Previously three separate donuts (cert vs non-cert counts, success rate
+  // for each) — answering "do certified boots actually perform better?"
+  // meant cross-referencing three cards with no shared scale. One paired
+  // bar chart puts both success rates on the same axis so the comparison
+  // is a single glance, with registration counts alongside for context.
+  // Donuts are also a poor fit for two-way splits generally: bar length
+  // reads more precisely than pie angle, especially for close values.
+  var certifiedBoots = bootsCache.filter(isBootCertified_).length;
+  var nonCertifiedBoots = bootsCache.length - certifiedBoots;
   function successRateFor_(certFlag) {
     var succ = 0, fail = 0;
     trials.forEach(function(t) {
@@ -2365,21 +2413,26 @@ function renderResultsAnalytics() {
     });
     return { succ: succ, fail: fail, total: succ + fail };
   }
-  function successRateDonutHtml_(rate, title) {
-    var pct = rate.total ? Math.round((rate.succ / rate.total) * 100) : null;
-    return '<div class="card"><div class="card-title">' + title + '</div>' +
-      (rate.total === 0
-        ? '<div class="empty-state">No completed trials with a struck outcome for this group yet.</div>'
-        : buildDonutHtml_([
-            { label: 'No puncture', count: rate.succ, color: 'var(--green)' },
-            { label: 'Puncture', count: rate.fail, color: 'var(--danger)' }
-          ], pct + '%', 'Success') +
-          '<div class="stat-caption">Based on ' + rate.total + ' completed trial' + (rate.total === 1 ? '' : 's') +
-          (rate.total < 5 ? ' — small sample, read with caution.' : '.') + '</div>'
-      ) + '</div>';
+  function certBarRowHtml_(label, bootCount, rate) {
+    var pct = rate.total ? Math.round((rate.succ / rate.total) * 100) : 0;
+    var smallSample = rate.total > 0 && rate.total < 5;
+    var valText = rate.total === 0
+      ? 'no completed trials yet'
+      : pct + '% success' + (smallSample ? '' : ' (n=' + rate.total + ')');
+    return '<div class="bar-row">' +
+      '<div class="bar-label-row"><span class="bl-name">' + escapeHtml_(label) + '</span>' +
+        '<span class="' + (smallSample ? 'small-sample-note' : 'bl-val') + '">' + valText + (smallSample ? ' (n=' + rate.total + ', small sample)' : '') + '</span></div>' +
+      '<div style="font-size:11.5px; color:var(--text-light); margin:-2px 0 4px;">' + bootCount + ' boot' + (bootCount === 1 ? '' : 's') + ' registered</div>' +
+      '<div class="bar-track"><div class="bar-fill' + (smallSample ? ' bar-fill-muted' : '') + '" style="width:' + pct + '%; background-color:var(--green)"></div></div>' +
+    '</div>';
   }
-  var certSuccessHtml = successRateDonutHtml_(successRateFor_(true), 'Success Rate — Certified Boots');
-  var nonCertSuccessHtml = successRateDonutHtml_(successRateFor_(false), 'Success Rate — Non-Certified Boots');
+  var certRate = successRateFor_(true);
+  var nonCertRate = successRateFor_(false);
+  var certCombinedHtml = '<div class="card"><div class="card-title">Boot Certification: Coverage &amp; Performance</div>' +
+    certBarRowHtml_('Certified', certifiedBoots, certRate) +
+    certBarRowHtml_('Non-Certified', nonCertifiedBoots, nonCertRate) +
+    '<div class="stat-caption">Bar length = % of completed trials with no puncture (success), for boots of that certification status. Striped bars are built from fewer than 5 completed trials — read those with caution.</div>' +
+    '</div>';
 
   // ----- Boot cost & source overview -----
   var costRows = bootsCache.slice().sort(function(a, b) {
@@ -2545,8 +2598,24 @@ function renderResultsAnalytics() {
       : trendRowsHtml + '<div class="stat-caption">Each bar is one month\'s full outcome mix (see legend above) — a bar getting greener/less red over time means the boots are holding up better as trials continue.</div>') +
     '</div>';
 
-  el.innerHTML = statsHtml + envHtml + regionStruckChartHtml + donutHtml + certCountHtml + certSuccessHtml + nonCertSuccessHtml + costHtml +
-    bootTypeHtml + bootHtml + speciesHtml + regionHtml + individualHtml + trendHtml;
+  // Grouped into labeled sections (rather than one long unbroken stack of
+  // 14 cards) so a researcher scrolling on a phone can jump straight to
+  // the kind of question they have — safety findings vs. equipment vs.
+  // usage — instead of scanning past everything in between.
+  function sectionHeaderHtml_(label) {
+    return '<div class="analytics-section-header">' + escapeHtml_(label) + '</div>';
+  }
+  el.innerHTML =
+    sectionHeaderHtml_('Overview') +
+    statsHtml + envHtml +
+    sectionHeaderHtml_('Safety Findings') +
+    regionStruckChartHtml + donutHtml + certCombinedHtml + bootHtml + speciesHtml + regionHtml +
+    sectionHeaderHtml_('Coverage & Usage') +
+    bootTypeHtml + individualHtml +
+    sectionHeaderHtml_('Equipment') +
+    costHtml +
+    sectionHeaderHtml_('Trend') +
+    trendHtml;
 }
 
 // ----- Load registries -----
