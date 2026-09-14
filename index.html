@@ -299,6 +299,12 @@
       margin-bottom: 10px; flex-wrap: wrap;
     }
     .cert-legend span { display: flex; align-items: center; }
+    .pairs-badge {
+      display: inline-block; margin-left: 8px; padding: 2px 8px;
+      background: var(--green-light); color: var(--green);
+      border-radius: 10px; font-size: 10.5px; font-weight: 700;
+      vertical-align: middle; font-family: -apple-system, sans-serif;
+    }
     .reg-list-item .reg-sub { font-size: 12px; color: var(--text-mid); margin-top: 2px; }
     .reg-list-item .reg-edit-btn {
       flex-shrink: 0; background: var(--green-light); color: var(--green);
@@ -2436,20 +2442,46 @@ function renderResultsAnalytics() {
     '</div>';
 
   // ----- Boot cost & source overview -----
-  var costRows = bootsCache.slice().sort(function(a, b) {
-    return (parseFloat(b.costPerPair) || 0) - (parseFloat(a.costPerPair) || 0);
+  // Grouped by Brand+Sole+Rubber (the "ALK-BL-BL" part of the Boot_ID)
+  // rather than one row per physical boot — a Left and Right, and any
+  // further pairs of the exact same combo, are the same purchase repeated,
+  // not distinct equipment worth listing separately here. The number of
+  // physical pairs that combo represents shows as a small badge next to
+  // the ID instead.
+  var costGroups_ = {};
+  bootsCache.forEach(function(b) {
+    var baseId = [b.brandAbbr, b.soleColor, b.rubberColor].filter(Boolean).join('-') || b.bootId;
+    if (!costGroups_[baseId]) costGroups_[baseId] = { baseId: baseId, rows: [], pairNumbers: {} };
+    costGroups_[baseId].rows.push(b);
+    if (b.pairNumber) costGroups_[baseId].pairNumbers[b.pairNumber] = true;
   });
-  var costListHtml = costRows.length === 0 ? '<div class="empty-state">No boots registered yet.</div>' :
-    costRows.map(function(b) {
-      var certified = isBootCertified_(b);
-      var price = b.costPerPair ? '&#8377;' + b.costPerPair : '—';
-      var store = [b.storeName, b.storeLocation].filter(Boolean).join(', ');
+  // A group can (rarely) mix different costs if separate pairs of the same
+  // combo were bought at different times — shown as a range rather than
+  // silently picking one and hiding the discrepancy.
+  function groupPriceInfo_(rows) {
+    var costs = rows.map(function(r) { return parseFloat(r.costPerPair); }).filter(function(n) { return !isNaN(n); });
+    if (costs.length === 0) return { text: '—', sortVal: 0 };
+    var min = Math.min.apply(null, costs), max = Math.max.apply(null, costs);
+    return { text: min === max ? ('&#8377;' + min) : ('&#8377;' + min + '&ndash;&#8377;' + max), sortVal: max };
+  }
+  var costGroupList = Object.keys(costGroups_).map(function(k) {
+    var g = costGroups_[k];
+    g.price = groupPriceInfo_(g.rows);
+    return g;
+  }).sort(function(a, b) { return b.price.sortVal - a.price.sortVal; });
+  var costListHtml = costGroupList.length === 0 ? '<div class="empty-state">No boots registered yet.</div>' :
+    costGroupList.map(function(g) {
+      var rep = g.rows[0];
+      var certified = isBootCertified_(rep);
+      var store = [rep.storeName, rep.storeLocation].filter(Boolean).join(', ');
+      var pairCount = Object.keys(g.pairNumbers).length || 1;
       return '<div class="reg-list-item" style="cursor:default">' +
         '<div class="reg-main">' +
-          '<div class="reg-id"><span class="cert-dot ' + (certified ? 'certified' : 'not-certified') + '"></span>' + escapeHtml_(b.bootId) + '</div>' +
-          '<div class="reg-sub">' + escapeHtml_(b.brandFull) + (b.model ? ' — ' + escapeHtml_(b.model) : '') + (store ? ' &middot; ' + escapeHtml_(store) : '') + '</div>' +
+          '<div class="reg-id"><span class="cert-dot ' + (certified ? 'certified' : 'not-certified') + '"></span>' + escapeHtml_(g.baseId) +
+            '<span class="pairs-badge">' + pairCount + ' pair' + (pairCount === 1 ? '' : 's') + '</span></div>' +
+          '<div class="reg-sub">' + escapeHtml_(rep.brandFull) + (rep.model ? ' — ' + escapeHtml_(rep.model) : '') + (store ? ' &middot; ' + escapeHtml_(store) : '') + '</div>' +
         '</div>' +
-        '<div class="bl-val" style="flex-shrink:0; font-weight:700; color:var(--text)">' + price + '</div>' +
+        '<div class="bl-val" style="flex-shrink:0; font-weight:700; color:var(--text)">' + g.price.text + '</div>' +
       '</div>';
     }).join('');
   var costHtml = '<div class="card"><div class="card-title">Boot Cost &amp; Source</div>' + costListHtml + '</div>';
