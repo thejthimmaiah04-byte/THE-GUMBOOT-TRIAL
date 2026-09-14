@@ -1320,7 +1320,7 @@ var API_URL = 'https://script.google.com/macros/s/AKfycbz8aQCRioiqD8Igig0CTZJ1zh
 // are both exempt from CORS, so we use those instead.
 
 var _jsonpCounter = 0;
-function apiGet(action) {
+function jsonpGet_(action) {
   return new Promise(function(resolve, reject) {
     var cbName = '_jsonp_cb_' + (_jsonpCounter++) + '_' + Date.now();
     var script = document.createElement('script');
@@ -1339,6 +1339,42 @@ function apiGet(action) {
     script.onerror = function() { cleanup(); reject(new Error('Request failed to load')); };
     script.src = API_URL + '?action=' + encodeURIComponent(action) + '&callback=' + cbName;
     document.body.appendChild(script);
+  });
+}
+
+// A <script src> load (used by jsonpGet_ above) always carries whatever
+// Google account cookies are present in the browser for google.com, and
+// on at least one real device that combination made Google refuse the
+// request outright ("Sorry, unable to open the file at present") even
+// though the exact same URL worked instantly with no session attached
+// (e.g. an Incognito tab). A plain fetch() with credentials explicitly
+// omitted sends no cookies at all, sidestepping that account/session
+// entirely — tried first, since it can't be any less reliable than JSONP
+// and may avoid this failure mode for other signed-in devices too. Apps
+// Script doesn't guarantee CORS headers on its response, so this can
+// legitimately fail to read the body even when the request itself
+// succeeds; either way we fall straight back to the proven JSONP path.
+function fetchGet_(action) {
+  var controller = ('AbortController' in window) ? new AbortController() : null;
+  var timeoutId = setTimeout(function() { if (controller) controller.abort(); }, 15000);
+  return fetch(API_URL + '?action=' + encodeURIComponent(action), {
+    method: 'GET',
+    credentials: 'omit',
+    mode: 'cors',
+    signal: controller ? controller.signal : undefined
+  }).then(function(res) {
+    clearTimeout(timeoutId);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return res.json();
+  }).catch(function(err) {
+    clearTimeout(timeoutId);
+    throw err;
+  });
+}
+
+function apiGet(action) {
+  return fetchGet_(action).catch(function() {
+    return jsonpGet_(action);
   });
 }
 
