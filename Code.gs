@@ -17,8 +17,12 @@
 // ---------- Reads (JSONP) ----------
 
 function doGet(e) {
-  var action = e.parameter.action;
-  var callback = e.parameter.callback;
+  // e is undefined when doGet is run manually from the Apps Script editor
+  // (no request object to pass) rather than hit as a real web request —
+  // guard so that doesn't surface as an unhandled crash in the Executions log.
+  var params = (e && e.parameter) || {};
+  var action = params.action;
+  var callback = params.callback;
   var result;
   try {
     if (action === 'getBoots') result = getBoots();
@@ -39,11 +43,12 @@ function doGet(e) {
 // ---------- Writes (hidden-iframe form POST + postMessage) ----------
 
 function doPost(e) {
-  var reqId = e.parameter.reqId || '';
-  var action = e.parameter.action;
+  var params = (e && e.parameter) || {};
+  var reqId = params.reqId || '';
+  var action = params.action;
   var data;
   try {
-    data = JSON.parse(e.parameter.data || '{}');
+    data = JSON.parse(params.data || '{}');
   } catch (err) {
     return postMessageResponse_(reqId, { success: false, message: 'Invalid request data' });
   }
