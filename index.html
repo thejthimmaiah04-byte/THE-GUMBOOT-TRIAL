@@ -1392,6 +1392,31 @@ function apiPost(action, data) {
 var bootsCache = [];
 var snakesCache = [];
 
+// ----- Local data cache (fallback when a live fetch fails) -----
+// Some devices intermittently can't reach the Apps Script backend at all
+// (device/account-specific Google-side errors, flaky rural connections,
+// carrier quirks) even though other devices and the server itself are fine.
+// Rather than leave the researcher staring at an empty app with nothing to
+// select, we keep the last successfully-loaded boots/snakes/trials in
+// localStorage and fall back to that on failure, so registration and trial
+// entry can continue against slightly-stale data instead of being blocked.
+var DATA_CACHE_KEYS_ = { boots: 'tlt_cache_boots', snakes: 'tlt_cache_snakes', trials: 'tlt_cache_trials' };
+var usingCachedData = { boots: false, snakes: false, trials: false };
+
+function saveDataCache_(key, data) {
+  try {
+    localStorage.setItem(DATA_CACHE_KEYS_[key], JSON.stringify({ data: data, savedAt: Date.now() }));
+  } catch (e) { /* storage full or unavailable — cache is best-effort only */ }
+}
+
+function loadDataCache_(key) {
+  try {
+    var raw = localStorage.getItem(DATA_CACHE_KEYS_[key]);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) { return null; }
+}
+
 // ----- Recorder name (who is entering this data) -----
 var RECORDER_KEY = 'tlt_recorder_name';
 
@@ -1756,8 +1781,17 @@ function updateDataErrorBanner() {
     banner.style.display = 'none';
     return;
   }
-  document.getElementById('data-error-text').textContent =
-    'Couldn\'t load ' + failed.join('/') + ' from the server — check your internet connection.';
+  var anyCached = failed.some(function(k) { return usingCachedData[k]; });
+  var text;
+  if (anyCached) {
+    var oldest = failed.filter(function(k) { return usingCachedData[k]; })
+      .map(function(k) { return usingCachedData[k]; }).sort(function(a, b) { return a - b; })[0];
+    var when = oldest ? new Date(oldest).toLocaleString() : 'earlier';
+    text = 'Couldn\'t reach the server for ' + failed.join('/') + ' — showing data saved on this device from ' + when + '. You can keep working; it will refresh automatically once the connection is back.';
+  } else {
+    text = 'Couldn\'t load ' + failed.join('/') + ' from the server — check your internet connection.';
+  }
+  document.getElementById('data-error-text').textContent = text;
   banner.style.display = 'flex';
 }
 
@@ -1766,26 +1800,37 @@ function retryDataLoad() {
   loadTrialLog();
 }
 
+function applyTrialsCache_(trials) {
+  allTrialsCache = trials || [];
+  trialsByDate = {};
+  allTrialsCache.forEach(function(t) {
+    if (!t.date) return;
+    if (!trialsByDate[t.date]) trialsByDate[t.date] = [];
+    trialsByDate[t.date].push(t);
+  });
+  renderCalendar();
+  renderTrialSummary();
+  if (document.getElementById('page-results').classList.contains('active')) {
+    renderResultsTrialsTable();
+    renderResultsAnalytics();
+  }
+}
+
 function loadTrialLog() {
   apiGet('getAllTrials').then(function(trials) {
-    allTrialsCache = trials || [];
-    trialsByDate = {};
-    allTrialsCache.forEach(function(t) {
-      if (!t.date) return;
-      if (!trialsByDate[t.date]) trialsByDate[t.date] = [];
-      trialsByDate[t.date].push(t);
-    });
+    saveDataCache_('trials', trials || []);
+    usingCachedData.trials = false;
     dataLoadErrors.trials = false;
     updateDataErrorBanner();
-    renderCalendar();
-    renderTrialSummary();
-    if (document.getElementById('page-results').classList.contains('active')) {
-      renderResultsTrialsTable();
-      renderResultsAnalytics();
-    }
+    applyTrialsCache_(trials);
   }).catch(function(e) {
     console.error('Failed to load trial log:', e);
     dataLoadErrors.trials = true;
+    var cached = loadDataCache_('trials');
+    if (cached) {
+      usingCachedData.trials = cached.savedAt;
+      applyTrialsCache_(cached.data);
+    }
     updateDataErrorBanner();
   });
 }
@@ -2429,6 +2474,8 @@ function renderResultsAnalytics() {
 function loadRegistries() {
   apiGet('getBoots').then(function(boots) {
     bootsCache = boots || [];
+    saveDataCache_('boots', bootsCache);
+    usingCachedData.boots = false;
     dataLoadErrors.boots = false;
     updateDataErrorBanner();
     populateBootDropdown();
@@ -2437,11 +2484,21 @@ function loadRegistries() {
   }).catch(function(e) {
     console.error('Failed to load boots:', e);
     dataLoadErrors.boots = true;
+    var cached = loadDataCache_('boots');
+    if (cached) {
+      bootsCache = cached.data || [];
+      usingCachedData.boots = cached.savedAt;
+      populateBootDropdown();
+      populateEditBootDropdown();
+      if (document.getElementById('page-boot-list').classList.contains('active')) renderBootList();
+    }
     updateDataErrorBanner();
   });
 
   apiGet('getSnakes').then(function(snakes) {
     snakesCache = snakes || [];
+    saveDataCache_('snakes', snakesCache);
+    usingCachedData.snakes = false;
     dataLoadErrors.snakes = false;
     updateDataErrorBanner();
     populateSnakeDropdown();
@@ -2450,6 +2507,14 @@ function loadRegistries() {
   }).catch(function(e) {
     console.error('Failed to load snakes:', e);
     dataLoadErrors.snakes = true;
+    var cached = loadDataCache_('snakes');
+    if (cached) {
+      snakesCache = cached.data || [];
+      usingCachedData.snakes = cached.savedAt;
+      populateSnakeDropdown();
+      populateEditSnakeDropdown();
+      if (document.getElementById('page-snake-list').classList.contains('active')) renderSnakeList();
+    }
     updateDataErrorBanner();
   });
 }
