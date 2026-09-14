@@ -1030,8 +1030,12 @@
     </div>
     <div class="row">
       <div>
-        <label for="b-mfg">Mfg Date (Month/Year)</label>
-        <input type="month" id="b-mfg">
+        <label for="b-mfg-year">Mfg Date (YYYY-MM)</label>
+        <div class="row" style="gap:6px;">
+          <select id="b-mfg-year" onchange="syncMfgDate_()"><option value="">Year</option></select>
+          <select id="b-mfg-month" onchange="syncMfgDate_()"><option value="">Month</option></select>
+        </div>
+        <input type="hidden" id="b-mfg">
       </div>
       <div>
         <label for="b-batch">Batch #</label>
@@ -1664,6 +1668,7 @@ function checkInAppBrowser() {
 // ----- Init -----
 document.addEventListener('DOMContentLoaded', function() {
   checkInAppBrowser();
+  populateMfgDateSelects_();
   history.replaceState({ page: 'home' }, '', '#home');
   history.pushState({ page: 'home' }, '', '#home');
   var today = new Date().toISOString().split('T')[0];
@@ -2780,6 +2785,52 @@ function editSnakeFromList(snakeId) {
   loadSnakeForEdit();
 }
 
+// Year-then-month selects (rather than a native <input type="month">) so
+// the displayed order is always Year, Month — a native month picker's
+// on-screen format follows the browser/OS locale (often "December 2025"
+// or "12/2025"), which can't be forced into YYYY-MM through markup alone.
+// The two selects stay in sync with the hidden #b-mfg input, which is
+// what the rest of the form (registerBoot/updateBoot payloads, edit
+// pre-fill) actually reads — so nothing downstream needed to change.
+function populateMfgDateSelects_() {
+  var yearSel = document.getElementById('b-mfg-year');
+  var monthSel = document.getElementById('b-mfg-month');
+  var currentYear = new Date().getFullYear();
+  for (var y = currentYear; y >= currentYear - 30; y--) {
+    var opt = document.createElement('option');
+    opt.value = String(y);
+    opt.textContent = String(y);
+    yearSel.appendChild(opt);
+  }
+  var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  monthNames.forEach(function(name, i) {
+    var mm = String(i + 1).padStart(2, '0');
+    var opt = document.createElement('option');
+    opt.value = mm;
+    opt.textContent = mm + ' — ' + name;
+    monthSel.appendChild(opt);
+  });
+}
+
+function syncMfgDate_() {
+  var y = document.getElementById('b-mfg-year').value;
+  var m = document.getElementById('b-mfg-month').value;
+  document.getElementById('b-mfg').value = (y && m) ? (y + '-' + m) : '';
+}
+
+// Accepts a strict "YYYY-MM" value and sets both selects to match; any
+// other shape (blank, a bare legacy year like "2017", free text) is left
+// with both selects blank — the raw value still gets written into the
+// hidden #b-mfg field by the caller so an unrelated edit doesn't blank it
+// out, it just can't be shown/re-picked through the Year/Month controls.
+function setMfgDateFromValue_(val) {
+  var yearSel = document.getElementById('b-mfg-year');
+  var monthSel = document.getElementById('b-mfg-month');
+  var m = /^(\d{4})-(\d{2})$/.exec(val || '');
+  yearSel.value = m ? m[1] : '';
+  monthSel.value = m ? m[2] : '';
+}
+
 function loadBootForEdit() {
   var id = document.getElementById('edit-boot-select').value;
   if (!id) {
@@ -2810,6 +2861,7 @@ function loadBootForEdit() {
   document.getElementById('b-brand').value = b.brandFull || '';
   document.getElementById('b-model').value = b.model || '';
   document.getElementById('b-mfg').value = b.mfgDate || '';
+  setMfgDateFromValue_(b.mfgDate);
   document.getElementById('b-batch').value = b.batch || '';
   document.getElementById('b-thick-t').value = b.thickT || '';
   document.getElementById('b-thick-lm').value = b.thickLM || '';
@@ -3494,7 +3546,8 @@ async function submitBootForm() {
 
 function clearBootForm() {
   ['b-abbr','b-sole-color','b-rubber-color','b-pair-num','b-model-abbr','b-brand','b-model','b-size','b-is','b-mfg','b-batch',
-   'b-thick-t','b-thick-lm','b-thick-i','b-cost','b-store-name','b-store-location'].forEach(function(id) {
+   'b-thick-t','b-thick-lm','b-thick-i','b-cost','b-store-name','b-store-location',
+   'b-mfg-year','b-mfg-month'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
   setCertified(false);

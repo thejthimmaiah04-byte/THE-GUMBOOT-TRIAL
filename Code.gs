@@ -433,7 +433,11 @@ function registerBoot(data) {
 
     sheet.appendRow([
       data.bootId, data.brandAbbr, sanitizeCell_(data.brandFull), sanitizeCell_(data.model),
-      data.size, data.session, sanitizeCell_(data.isStandard), sanitizeCell_(data.mfgDate), sanitizeCell_(data.batch),
+      // Leading apostrophe forces plain text — Sheets otherwise silently
+      // auto-detects a "YYYY-MM" string as a real date, storing e.g.
+      // "2026-01" as a full timestamp that reads back wrong (and can't be
+      // re-parsed by the front-end's Year/Month pickers on the next edit).
+      data.size, data.session, sanitizeCell_(data.isStandard), (data.mfgDate ? "'" + data.mfgDate : ''), sanitizeCell_(data.batch),
       data.thickT, data.thickLM, data.thickI,
       photoLinks.join('\n'), todayDateStr_(), sanitizeCell_(data.recordedBy), data.modelAbbr,
       '', '',
@@ -503,7 +507,8 @@ function updateBoot(data) {
     // value it can't parse into that exact format (e.g. a bare year like
     // "2017"). Overwriting unconditionally would blank out that real data
     // the moment someone opens the boot for an unrelated edit and saves.
-    if (data.mfgDate) newRow[7] = sanitizeCell_(data.mfgDate);
+    // Leading apostrophe forces plain text, same reasoning as registerBoot.
+    if (data.mfgDate) newRow[7] = "'" + data.mfgDate;
     newRow[8] = sanitizeCell_(data.batch);
     newRow[9] = data.thickT;
     newRow[10] = data.thickLM;
