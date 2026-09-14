@@ -344,6 +344,14 @@
     .legend-item .lg-count { color: var(--text-mid); margin-left: auto; padding-left: 10px; }
 
     .bar-row { margin-top: 12px; }
+    .species-subsection { margin-top: 16px; }
+    .species-subsection:first-child { margin-top: 0; }
+    .species-subsection-title {
+      font-size: 12.5px; font-weight: 700; color: var(--text-mid);
+      text-transform: uppercase; letter-spacing: 0.3px;
+      padding-bottom: 4px; margin-bottom: 4px;
+      border-bottom: 1px solid rgba(0,0,0,0.08);
+    }
     .bar-row:first-child { margin-top: 0; }
     .bar-row .bar-label-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; margin-bottom: 4px; gap: 8px; }
     .bar-row .bl-name { font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2463,11 +2471,46 @@ function renderResultsAnalytics() {
   // used in to date — a running usage count per animal, not a field-visit
   // number. Also useful as a welfare/habituation flag: an individual with a
   // high session count relative to others has been reused a lot.
-  var byIndividual = groupTrialCount_(trials, function(t) { return t.snakeId; }, function(t) {
-    return t.snakeId + (t.speciesCode ? ' (' + (SPECIES_NAMES_[t.speciesCode] || t.speciesCode) + ')' : '');
+  // Grouped into a subsection per species (rather than one long mixed list)
+  // so individuals of the same species are easy to compare against each
+  // other, since session counts aren't meaningfully comparable across
+  // different species.
+  var individualGroups = {};
+  trials.forEach(function(t) {
+    if (!t.snakeId) return;
+    if (!individualGroups[t.snakeId]) {
+      individualGroups[t.snakeId] = {
+        key: t.snakeId,
+        label: t.snakeId + (t.speciesCode ? ' (' + (SPECIES_NAMES_[t.speciesCode] || t.speciesCode) + ')' : ''),
+        speciesCode: t.speciesCode || '',
+        total: 0
+      };
+    }
+    individualGroups[t.snakeId].total++;
   });
+  var individualBySpecies = {};
+  Object.keys(individualGroups).forEach(function(k) {
+    var g = individualGroups[k];
+    var sp = g.speciesCode || 'Unknown';
+    if (!individualBySpecies[sp]) individualBySpecies[sp] = [];
+    individualBySpecies[sp].push(g);
+  });
+  var individualSpeciesOrder = Object.keys(individualBySpecies).sort(function(a, b) {
+    var totalA = individualBySpecies[a].reduce(function(s, g) { return s + g.total; }, 0);
+    var totalB = individualBySpecies[b].reduce(function(s, g) { return s + g.total; }, 0);
+    return totalB - totalA;
+  });
+  var individualSectionsHtml = individualSpeciesOrder.length === 0
+    ? '<div class="empty-state">No trials recorded yet.</div>'
+    : individualSpeciesOrder.map(function(sp) {
+        var rows = individualBySpecies[sp].sort(function(a, b) { return b.total - a.total; });
+        var speciesLabel = SPECIES_NAMES_[sp] || sp;
+        return '<div class="species-subsection"><div class="species-subsection-title">' + escapeHtml_(speciesLabel) + '</div>' +
+          buildCountBarChartHtml_(rows, '', 'var(--amber)', function(n) { return ' session' + (n === 1 ? '' : 's'); }) +
+          '</div>';
+      }).join('');
   var individualHtml = '<div class="card"><div class="card-title">Trials per Individual (Session Count)</div>' +
-    buildCountBarChartHtml_(byIndividual, 'No trials recorded yet.', 'var(--amber)', function(n) { return ' session' + (n === 1 ? '' : 's'); }) +
+    individualSectionsHtml +
     '<div class="stat-caption">Session count = total trials that individual snake has been used in to date — a high count relative to others may be worth flagging for animal welfare/habituation reasons.</div>' +
     '</div>';
 
