@@ -361,14 +361,10 @@
     .bar-fill { height: 100%; border-radius: 6px; }
     /* A rate built from under 5 trials shouldn't look as visually confident
        as one built from 50 — a plain solid bar can't tell the reader that
-       just from its length. The stripe is an explicit, opt-in "read with
-       caution" cue rather than decoration (per dataviz texture guidance),
-       paired with the small-sample-note text so it never relies on the
-       stripe alone. */
-    .bar-fill-muted {
-      opacity: 0.6;
-      background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.4) 0, rgba(255,255,255,0.4) 3px, transparent 3px, transparent 7px);
-    }
+       just from its length. A simple opacity drop is a quieter "read with
+       caution" cue than a stripe pattern, paired with the small-sample-note
+       text so it never relies on the fade alone. */
+    .bar-fill-muted { opacity: 0.45; }
 
     .analytics-section-header {
       font-size: 12px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase;
@@ -2431,7 +2427,7 @@ function renderResultsAnalytics() {
   var certCombinedHtml = '<div class="card"><div class="card-title">Boot Certification: Coverage &amp; Performance</div>' +
     certBarRowHtml_('Certified', certifiedBoots, certRate) +
     certBarRowHtml_('Non-Certified', nonCertifiedBoots, nonCertRate) +
-    '<div class="stat-caption">Bar length = % of completed trials with no puncture (success), for boots of that certification status. Striped bars are built from fewer than 5 completed trials — read those with caution.</div>' +
+    '<div class="stat-caption">Bar length = % of completed trials with no puncture (success), for boots of that certification status. Faded bars are built from fewer than 5 completed trials — read those with caution.</div>' +
     '</div>';
 
   // ----- Boot cost & source overview -----
