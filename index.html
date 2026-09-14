@@ -2317,7 +2317,7 @@ function renderResultsAnalytics() {
   // those for species identity risked a species' bars being unconsciously
   // read as "good" or "bad" rather than just "which species." Validated
   // colorblind-safe as a set (scripts/validate_palette.js, all checks pass).
-  var SPECIES_COLOR_PALETTE_ = ['#1e6fd9', '#16a085', '#c2185b', '#b8860b'];
+  var SPECIES_COLOR_PALETTE_ = ['#1e6fd9', '#16a085', '#d35400', '#5e35b1'];
   var speciesInData_ = [];
   trials.forEach(function(t) {
     if (t.speciesCode && speciesInData_.indexOf(t.speciesCode) === -1) speciesInData_.push(t.speciesCode);
@@ -2549,13 +2549,20 @@ function renderResultsAnalytics() {
     var totalB = individualBySpecies[b].reduce(function(s, g) { return s + g.total; }, 0);
     return totalB - totalA;
   });
+  // Colored per species (matching the same species-color mapping used in
+  // the "Trials by Region Struck" chart above) rather than one flat amber
+  // for every bar, so a species is visually identifiable by color across
+  // both charts, not just by its subsection heading.
+  var speciesColorByCode_ = {};
+  speciesList_.forEach(function(sp) { speciesColorByCode_[sp.code] = sp.color; });
   var individualSectionsHtml = individualSpeciesOrder.length === 0
     ? '<div class="empty-state">No trials recorded yet.</div>'
     : individualSpeciesOrder.map(function(sp) {
         var rows = individualBySpecies[sp].sort(function(a, b) { return b.total - a.total; });
         var speciesLabel = SPECIES_NAMES_[sp] || sp;
+        var barColor = speciesColorByCode_[sp] || 'var(--amber)';
         return '<div class="species-subsection"><div class="species-subsection-title">' + escapeHtml_(speciesLabel) + '</div>' +
-          buildCountBarChartHtml_(rows, '', 'var(--amber)', function(n) { return ' session' + (n === 1 ? '' : 's'); }) +
+          buildCountBarChartHtml_(rows, '', barColor, function(n) { return ' session' + (n === 1 ? '' : 's'); }) +
           '</div>';
       }).join('');
   var individualHtml = '<div class="card"><div class="card-title">Trials per Individual (Session Count)</div>' +
