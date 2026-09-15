@@ -863,9 +863,17 @@
   <!-- Snake selection -->
   <div class="card">
     <div class="card-title">Snake</div>
+    <label for="t-species-filter">Select Species</label>
+    <select id="t-species-filter" onchange="onSpeciesFilterChange()">
+      <option value="">-- select species --</option>
+      <option value="DR">DR &mdash; Russell's viper (Daboia russelii)</option>
+      <option value="NN">NN &mdash; Spectacled cobra (Naja naja)</option>
+      <option value="BC">BC &mdash; Common krait (Bungarus caeruleus)</option>
+      <option value="EC">EC &mdash; Saw-scaled viper (Echis carinatus)</option>
+    </select>
     <label for="t-snake">Select Registered Snake</label>
-    <select id="t-snake" onchange="onSnakeSelect()">
-      <option value="">-- select snake --</option>
+    <select id="t-snake" onchange="onSnakeSelect()" disabled>
+      <option value="">-- select species first --</option>
     </select>
     <div id="snake-info" class="detail-summary" style="display:none"></div>
   </div>
@@ -2993,11 +3001,27 @@ function populateBootDropdown() {
   if (sel.value) onBootSelect();
 }
 
+// Species is picked first, and only individuals of that species populate
+// the snake select — with several species and many individuals registered,
+// scanning one long mixed-species list to find the right animal was slow
+// and error-prone in the field. The species filter itself isn't submitted
+// data, just a narrowing step, so it's preserved across background syncs
+// the same way the snake selection itself already was.
 function populateSnakeDropdown() {
   var sel = document.getElementById('t-snake');
+  var speciesFilter = document.getElementById('t-species-filter').value;
   var currentVal = sel.value;
-  sel.innerHTML = '<option value="">-- select snake (' + snakesCache.length + ' registered) --</option>';
-  snakesCache.forEach(function(s) {
+  if (!speciesFilter) {
+    sel.innerHTML = '<option value="">-- select species first --</option>';
+    sel.disabled = true;
+    selectedSnake = null;
+    document.getElementById('snake-info').style.display = 'none';
+    return;
+  }
+  sel.disabled = false;
+  var filtered = snakesCache.filter(function(s) { return s.speciesCode === speciesFilter; });
+  sel.innerHTML = '<option value="">-- select snake (' + filtered.length + ' registered) --</option>';
+  filtered.forEach(function(s) {
     var opt = document.createElement('option');
     opt.value = s.snakeId;
     opt.textContent = s.snakeId + ' — ' + s.commonName + ', ' + s.ageClass;
@@ -3005,6 +3029,12 @@ function populateSnakeDropdown() {
   });
   sel.value = currentVal;
   if (sel.value) onSnakeSelect();
+}
+
+function onSpeciesFilterChange() {
+  document.getElementById('t-snake').value = '';
+  populateSnakeDropdown();
+  onSnakeSelect();
 }
 
 // ----- Auto-fill on selection -----
@@ -3385,7 +3415,9 @@ async function submitTrialForm() {
 
 function clearTrialForm() {
   document.getElementById('t-boot').value = '';
+  document.getElementById('t-species-filter').value = '';
   document.getElementById('t-snake').value = '';
+  populateSnakeDropdown();
   document.getElementById('t-outcome').value = '';
   document.getElementById('t-strikes').value = '';
   document.getElementById('t-bites').value = '';
