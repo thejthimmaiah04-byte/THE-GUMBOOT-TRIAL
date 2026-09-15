@@ -2756,7 +2756,7 @@ function renderBootList() {
   var items = bootsCache.filter(function(b) {
     if (!q) return true;
     return [b.bootId, b.brandFull, b.model, b.soleColor, b.rubberColor].join(' ').toLowerCase().indexOf(q) !== -1;
-  });
+  }).sort(function(a, b) { return a.bootId.localeCompare(b.bootId); });
   countEl.textContent = items.length + ' of ' + bootsCache.length + ' registered';
   if (items.length === 0) {
     listEl.innerHTML = '<div class="empty-state">No boots found.</div>';
