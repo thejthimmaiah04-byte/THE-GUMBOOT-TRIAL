@@ -511,7 +511,7 @@
     .outcome-badge.NP-M { background: var(--amber); }
     .outcome-badge.NP-R { background: var(--text-light); }
     .outcome-badge.VOB { background: #8e44ad; }
-    .outcome-badge.INC { background: #999; }
+    .outcome-badge.DNS { background: #999; }
 
     /* --- All Trials Summary --- */
     #trial-summary-card summary::after {
@@ -903,7 +903,7 @@
       <option value="NP-M">NP-M &mdash; No puncture, fang marks visible</option>
       <option value="NP-R">NP-R &mdash; Non-reactive / refused to strike</option>
       <option value="VOB">VOB &mdash; Venom on the boot</option>
-      <option value="INC">INC &mdash; Incomplete trial</option>
+      <option value="DNS">DNS &mdash; Did Not Strike</option>
     </select>
 
     <div id="strikes-section">
@@ -1881,7 +1881,15 @@ function retryDataLoad() {
 }
 
 function applyTrialsCache_(trials) {
-  allTrialsCache = trials || [];
+  // "Incomplete" was renamed to "Did Not Strike (DNS)" for more accurate
+  // wording — normalized here on read (not touching the Sheet itself) so
+  // trials already recorded with the old "INC" code keep working exactly
+  // like a "DNS" trial everywhere outcome codes are matched (badge style,
+  // OUTCOME_META, exclusion from rate math).
+  allTrialsCache = (trials || []).map(function(t) {
+    if (t.outcome === 'INC') t.outcome = 'DNS';
+    return t;
+  });
   trialsByDate = {};
   allTrialsCache.forEach(function(t) {
     if (!t.date) return;
@@ -2040,7 +2048,7 @@ function toggleDetail(id) {
 }
 
 // ----- All Trials Summary -----
-var OUTCOME_ORDER = ['P', 'NP', 'NP-M', 'NP-R', 'VOB', 'INC'];
+var OUTCOME_ORDER = ['P', 'NP', 'NP-M', 'NP-R', 'VOB', 'DNS'];
 
 function renderTrialSummary() {
   var statsEl = document.getElementById('trial-summary-stats');
@@ -2056,7 +2064,7 @@ function renderTrialSummary() {
 
   var counts = {};
   allTrialsCache.forEach(function(t) {
-    var o = t.outcome || 'INC';
+    var o = t.outcome || 'DNS';
     counts[o] = (counts[o] || 0) + 1;
   });
   var statsHtml = '<div class="trial-summary-stats-row"><b>' + total + '</b> total trial' + (total === 1 ? '' : 's');
@@ -2084,9 +2092,9 @@ function renderTrialSummary() {
 //   P     = puncture (boot failed)             -> counted as a failure
 //   NP / NP-M / VOB = boot held, no puncture    -> counted as protective
 //   NP-R  = snake never struck (non-reactive)   -> excluded from rate math
-//   INC   = incomplete trial                    -> excluded from rate math
+//   DNS   = did not strike / trial incomplete   -> excluded from rate math
 // Rates below are always "of trials where the snake actually struck and the
-// trial was completed" — NP-R/INC would otherwise silently dilute the rate
+// trial was completed" — NP-R/DNS would otherwise silently dilute the rate
 // with trials that say nothing about boot performance.
 var OUTCOME_META = {
   'P':    { label: 'Puncture',                 color: 'var(--danger)' },
@@ -2094,11 +2102,11 @@ var OUTCOME_META = {
   'NP-M': { label: 'No puncture (fang marks)', color: 'var(--amber)' },
   'NP-R': { label: 'Non-reactive',             color: 'var(--text-light)' },
   'VOB':  { label: 'Venom on boot',            color: '#8e44ad' },
-  'INC':  { label: 'Incomplete',               color: '#999' }
+  'DNS':  { label: 'Did Not Strike',           color: '#999' }
 };
 var RESULTS_SUCCESS_OUTCOMES = ['NP', 'NP-M', 'VOB'];
 var RESULTS_FAILURE_OUTCOME = 'P';
-var RESULTS_EXCLUDED_OUTCOMES = ['NP-R', 'INC'];
+var RESULTS_EXCLUDED_OUTCOMES = ['NP-R', 'DNS'];
 var SPECIES_NAMES_ = { DR: "Russell's viper", NN: 'Spectacled cobra', BC: 'Common krait', EC: 'Saw-scaled viper' };
 
 function switchResultsTab(tabId) {
