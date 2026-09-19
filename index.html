@@ -927,6 +927,7 @@
         <label><input type="checkbox" value="H" onchange="onRegionCheckChange()"> H &ndash; Heel</label>
         <label><input type="checkbox" value="A" onchange="onRegionCheckChange()"> A &ndash; Ankle</label>
         <label><input type="checkbox" value="S" onchange="onRegionCheckChange()"> S &ndash; Shin</label>
+        <label><input type="checkbox" value="C" onchange="onRegionCheckChange()"> C &ndash; Calf</label>
         <label><input type="checkbox" value="U" onchange="onRegionCheckChange()"> U &ndash; Undetermined</label>
       </div>
       <div id="region-outcomes-wrap" style="display:none">
@@ -2336,7 +2337,7 @@ function renderResultsAnalytics() {
   // Split into one bar per species (rather than one combined bar) so a
   // region that's mostly being tested on one species doesn't look the
   // same as one tested evenly across all of them.
-  var REGION_ORDER_ = ['T', 'LM', 'IM', 'H', 'A', 'S', 'U'];
+  var REGION_ORDER_ = ['T', 'LM', 'IM', 'H', 'A', 'S', 'C', 'U'];
   // Deliberately distinct from every status color used elsewhere on this
   // page (green=success/certified, amber=small-sample warning, red=
   // puncture/failure, purple=the "Venom on boot" outcome) — reusing any of
@@ -3148,8 +3149,8 @@ function onOutcomeChange() {
 // Keyed separately from the checkboxes so unchecking then rechecking a
 // region during the same entry doesn't lose whatever outcome was already
 // picked for it.
-var REGION_LABELS = { T: 'T — Toe', LM: 'LM — Lateral', IM: 'IM — Instep', H: 'H — Heel', A: 'A — Ankle', S: 'S — Shin', U: 'U — Undetermined' };
-var REGION_NAMES = { T: 'Toe', LM: 'Lateral', IM: 'Instep', H: 'Heel', A: 'Ankle', S: 'Shin', U: 'Undetermined' };
+var REGION_LABELS = { T: 'T — Toe', LM: 'LM — Lateral', IM: 'IM — Instep', H: 'H — Heel', A: 'A — Ankle', S: 'S — Shin', C: 'C — Calf', U: 'U — Undetermined' };
+var REGION_NAMES = { T: 'Toe', LM: 'Lateral', IM: 'Instep', H: 'Heel', A: 'Ankle', S: 'Shin', C: 'Calf', U: 'Undetermined' };
 var regionOutcomeValues = {};
 
 function onRegionCheckChange() {
