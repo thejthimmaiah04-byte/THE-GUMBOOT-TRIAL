@@ -125,6 +125,7 @@
       outline: none; border-color: var(--green); background: #fff;
     }
     input.invalid, select.invalid { border-color: var(--danger); background: #fff5f5; }
+    .cb-group.invalid { outline: 2px solid var(--danger); outline-offset: 3px; border-radius: 6px; }
     textarea { resize: vertical; min-height: 70px; }
     input[type="file"] {
       font-size: 14px; padding: 8px; background: var(--green-light);
@@ -506,6 +507,7 @@
     .outcome-badge {
       font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 10px; color: #fff;
     }
+    .outcome-badges { display: inline-flex; flex-wrap: wrap; gap: 4px; }
     .outcome-badge.P { background: var(--danger); }
     .outcome-badge.NP { background: var(--green); }
     .outcome-badge.NP-M { background: var(--amber); }
@@ -895,15 +897,14 @@
   <!-- Outcome -->
   <div class="card">
     <div class="card-title">Trial Outcome</div>
-    <label for="t-outcome">Outcome</label>
-    <select id="t-outcome" onchange="onOutcomeChange()">
-      <option value="">-- select --</option>
-      <option value="P">P &mdash; Puncture</option>
-      <option value="NP">NP &mdash; No puncture</option>
-      <option value="NP-M">NP-M &mdash; No puncture, fang marks visible</option>
-      <option value="VOB">VOB &mdash; Venom on the boot</option>
-      <option value="DNS">DNS &mdash; Did Not Strike</option>
-    </select>
+    <label>Outcome (select all that apply)</label>
+    <div class="cb-group" id="t-outcome">
+      <label><input type="checkbox" value="P" onchange="onOutcomeChange(this)"> P &mdash; Puncture</label>
+      <label><input type="checkbox" value="NP" onchange="onOutcomeChange(this)"> NP &mdash; No puncture</label>
+      <label><input type="checkbox" value="NP-M" onchange="onOutcomeChange(this)"> NP-M &mdash; No puncture, fang marks visible</label>
+      <label><input type="checkbox" value="VOB" onchange="onOutcomeChange(this)"> VOB &mdash; Venom on the boot</label>
+      <label><input type="checkbox" value="DNS" onchange="onOutcomeChange(this)"> DNS &mdash; Did Not Strike</label>
+    </div>
 
     <div id="strikes-section">
       <div class="row">
@@ -1887,7 +1888,7 @@ function applyTrialsCache_(trials) {
   // like a "DNS" trial everywhere outcome codes are matched (badge style,
   // OUTCOME_META, exclusion from rate math).
   allTrialsCache = (trials || []).map(function(t) {
-    if (t.outcome === 'INC') t.outcome = 'DNS';
+    t.outcome = normalizeOutcome_(t.outcome);
     return t;
   });
   trialsByDate = {};
@@ -2015,9 +2016,8 @@ function buildTrialDetailHtml_(t) {
 }
 
 function buildTrialLogItemHtml_(t, detailId, toggleExpr, showDate) {
-  var badgeClass = (t.outcome || '').replace(/[^A-Z-]/g, '');
   var html = '<div class="trial-log-item" onclick="' + toggleExpr + '">';
-  html += '<div class="tl-top"><span>' + t.trialId + '</span><span class="outcome-badge ' + badgeClass + '">' + t.outcome + '</span></div>';
+  html += '<div class="tl-top"><span>' + t.trialId + '</span>' + outcomeBadgesHtml_(t.outcome) + '</div>';
   html += '<div class="tl-sub">' + (showDate ? (t.date || '') + ' &middot; ' : '') +
     (t.speciesCode || '') + ' ' + (t.ageClass || '') + ' vs ' + (t.bootBrand || '') + ' (Size ' + (t.bootSize || '') + ') &middot; Strikes: ' + t.strikes + ' &middot; Region: ' + (t.regionStruck || '-') + '</div>';
   html += '<div class="trial-detail" id="' + detailId + '">' + buildTrialDetailHtml_(t) + '</div></div>';
@@ -2050,6 +2050,46 @@ function toggleDetail(id) {
 // ----- All Trials Summary -----
 var OUTCOME_ORDER = ['P', 'NP', 'NP-M', 'NP-R', 'VOB', 'DNS'];
 
+// A trial's outcome can be several codes at once ("NP+VOB"). Everything
+// below works from the canonical "+"-joined string (codes in OUTCOME_ORDER
+// order; legacy "INC" read as "DNS") so old single-code trials are just the
+// one-code case.
+function normalizeOutcome_(str) {
+  var seen = {};
+  String(str || '').split('+').forEach(function(c) {
+    c = c.trim();
+    if (c === 'INC') c = 'DNS';
+    if (c) seen[c] = true;
+  });
+  function rank(c) { var i = OUTCOME_ORDER.indexOf(c); return i === -1 ? 99 : i; }
+  return Object.keys(seen).sort(function(a, b) { return rank(a) - rank(b); }).join('+');
+}
+
+function outcomeCodes_(t) {
+  return t.outcome ? String(t.outcome).split('+') : [];
+}
+
+// Trial-level classification for rate math: any puncture makes it a
+// failure; otherwise a no-puncture / venom-on-boot trial is a success;
+// did-not-strike (and unknown/blank) trials say nothing about the boot.
+function outcomeClass_(t) {
+  var codes = outcomeCodes_(t);
+  if (codes.indexOf(RESULTS_FAILURE_OUTCOME) !== -1) return 'failure';
+  if (codes.some(function(c) { return RESULTS_EXCLUDED_OUTCOMES.indexOf(c) !== -1; })) return 'excluded';
+  if (codes.some(function(c) { return RESULTS_SUCCESS_OUTCOMES.indexOf(c) !== -1; })) return 'success';
+  return 'excluded';
+}
+
+function outcomeBadgesHtml_(outcomeStr, suffixText) {
+  var codes = outcomeStr ? String(outcomeStr).split('+') : [];
+  if (codes.length === 0) return '<span class="outcome-badge">-</span>';
+  var last = codes.length - 1;
+  return '<span class="outcome-badges">' + codes.map(function(c, i) {
+    return '<span class="outcome-badge ' + c.replace(/[^A-Z-]/g, '') + '">' + escapeHtml_(c) +
+      (i === last && suffixText ? ' &middot; ' + suffixText : '') + '</span>';
+  }).join('') + '</span>';
+}
+
 function renderTrialSummary() {
   var statsEl = document.getElementById('trial-summary-stats');
   var listEl = document.getElementById('trial-summary-list');
@@ -2068,10 +2108,8 @@ function renderTrialSummary() {
     counts[o] = (counts[o] || 0) + 1;
   });
   var statsHtml = '<div class="trial-summary-stats-row"><b>' + total + '</b> total trial' + (total === 1 ? '' : 's');
-  OUTCOME_ORDER.forEach(function(o) {
-    if (counts[o]) {
-      statsHtml += ' <span class="outcome-badge ' + o + '">' + o + ' &middot; ' + counts[o] + '</span>';
-    }
+  outcomeCategories_(allTrialsCache).forEach(function(cat) {
+    if (counts[cat.key]) statsHtml += ' ' + outcomeBadgesHtml_(cat.key, counts[cat.key]);
   });
   statsHtml += '</div>';
   statsEl.innerHTML = statsHtml;
@@ -2107,6 +2145,29 @@ var OUTCOME_META = {
 var RESULTS_SUCCESS_OUTCOMES = ['NP', 'NP-M', 'VOB'];
 var RESULTS_FAILURE_OUTCOME = 'P';
 var RESULTS_EXCLUDED_OUTCOMES = ['NP-R', 'DNS'];
+
+// Categories for the distribution charts (donut, monthly trend): every
+// distinct outcome string present in the data, so a combined "NP+VOB"
+// trial is its own slice rather than being counted twice — slices always
+// add up to the trial total. Single codes keep their established colors
+// (in OUTCOME_ORDER order); combinations follow, each with its own color
+// deliberately distinct from every single-outcome color and from pink.
+var OUTCOME_COMBO_COLORS_ = ['#6d4c41', '#00838f', '#827717', '#37474f', '#e65100'];
+function outcomeCategories_(trials) {
+  var present = {};
+  trials.forEach(function(t) { present[t.outcome || 'DNS'] = true; });
+  var singles = OUTCOME_ORDER.filter(function(c) { return present[c]; })
+    .map(function(c) { return { key: c, label: OUTCOME_META[c].label, color: OUTCOME_META[c].color }; });
+  var combos = Object.keys(present).filter(function(k) { return OUTCOME_ORDER.indexOf(k) === -1; }).sort()
+    .map(function(k, i) {
+      return {
+        key: k,
+        label: k.split('+').map(function(c) { return OUTCOME_META[c] ? OUTCOME_META[c].label : c; }).join(' + '),
+        color: OUTCOME_COMBO_COLORS_[i % OUTCOME_COMBO_COLORS_.length]
+      };
+    });
+  return singles.concat(combos);
+}
 var SPECIES_NAMES_ = { DR: "Russell's viper", NN: 'Spectacled cobra', BC: 'Common krait', EC: 'Saw-scaled viper' };
 
 function switchResultsTab(tabId) {
@@ -2129,12 +2190,11 @@ function renderResultsTrialsTable() {
     return;
   }
   tbody.innerHTML = rows.map(function(t) {
-    var badgeClass = (t.outcome || '').replace(/[^A-Z-]/g, '');
     return '<tr>' +
       '<td>' + escapeHtml_(t.date) + '</td>' +
       '<td>' + escapeHtml_(t.snakeId) + '</td>' +
       '<td>' + escapeHtml_(t.bootId) + '</td>' +
-      '<td><span class="outcome-badge ' + badgeClass + '">' + escapeHtml_(t.outcome || '-') + '</span></td>' +
+      '<td>' + outcomeBadgesHtml_(t.outcome) + '</td>' +
     '</tr>';
   }).join('');
 }
@@ -2146,12 +2206,13 @@ function renderResultsTrialsTable() {
 function groupPunctureRate_(trials, keyFn, labelFn) {
   var groups = {};
   trials.forEach(function(t) {
-    if (RESULTS_EXCLUDED_OUTCOMES.indexOf(t.outcome) !== -1) return;
+    var cls = outcomeClass_(t);
+    if (cls === 'excluded') return;
     var key = keyFn(t);
     if (!key) return;
     if (!groups[key]) groups[key] = { key: key, label: labelFn(t), total: 0, punctures: 0 };
     groups[key].total++;
-    if (t.outcome === RESULTS_FAILURE_OUTCOME) groups[key].punctures++;
+    if (cls === 'failure') groups[key].punctures++;
   });
   return Object.keys(groups).map(function(k) {
     var g = groups[k];
@@ -2284,13 +2345,18 @@ function renderResultsAnalytics() {
     return;
   }
 
+  // counts = trials per distinct outcome string (a combined "NP+VOB" trial
+  // is one entry, not one per code, so these add up to the trial total).
   var counts = {};
-  OUTCOME_ORDER.forEach(function(o) { counts[o] = 0; });
-  trials.forEach(function(t) { counts[t.outcome] = (counts[t.outcome] || 0) + 1; });
+  trials.forEach(function(t) { var k = t.outcome || 'DNS'; counts[k] = (counts[k] || 0) + 1; });
 
-  var successCount = RESULTS_SUCCESS_OUTCOMES.reduce(function(s, o) { return s + counts[o]; }, 0);
-  var failureCount = counts[RESULTS_FAILURE_OUTCOME];
-  var excludedCount = RESULTS_EXCLUDED_OUTCOMES.reduce(function(s, o) { return s + counts[o]; }, 0);
+  var successCount = 0, failureCount = 0, excludedCount = 0;
+  trials.forEach(function(t) {
+    var cls = outcomeClass_(t);
+    if (cls === 'success') successCount++;
+    else if (cls === 'failure') failureCount++;
+    else excludedCount++;
+  });
   var validCount = successCount + failureCount;
   var protectionRate = validCount ? Math.round((successCount / validCount) * 100) : null;
   var punctureRate = validCount ? Math.round((failureCount / validCount) * 100) : null;
@@ -2395,14 +2461,14 @@ function renderResultsAnalytics() {
   var gradientParts = [];
   var cursor = 0;
   var legendHtml = '';
-  OUTCOME_ORDER.forEach(function(o) {
-    if (!counts[o]) return;
-    var pct = (counts[o] / total) * 100;
-    var meta = OUTCOME_META[o];
-    gradientParts.push(meta.color + ' ' + cursor + '% ' + (cursor + pct) + '%');
+  var outcomeCats = outcomeCategories_(trials);
+  outcomeCats.forEach(function(cat) {
+    if (!counts[cat.key]) return;
+    var pct = (counts[cat.key] / total) * 100;
+    gradientParts.push(cat.color + ' ' + cursor + '% ' + (cursor + pct) + '%');
     cursor += pct;
-    legendHtml += '<div class="legend-item"><span class="legend-dot" style="background:' + meta.color + '"></span>' +
-      '<span>' + o + ' &mdash; ' + meta.label + '</span><span class="lg-count">' + counts[o] + '</span></div>';
+    legendHtml += '<div class="legend-item"><span class="legend-dot" style="background:' + cat.color + '"></span>' +
+      '<span>' + cat.key + ' &mdash; ' + escapeHtml_(cat.label) + '</span><span class="lg-count">' + counts[cat.key] + '</span></div>';
   });
   var donutHtml = '<div class="card"><div class="card-title">Outcome Distribution</div>' +
     summarySplitHtml +
@@ -2428,11 +2494,12 @@ function renderResultsAnalytics() {
   function successRateFor_(certFlag) {
     var succ = 0, fail = 0;
     trials.forEach(function(t) {
-      if (RESULTS_EXCLUDED_OUTCOMES.indexOf(t.outcome) !== -1) return;
+      var cls = outcomeClass_(t);
+      if (cls === 'excluded') return;
       var b = bootsCache.find(function(x) { return x.bootId === t.bootId; });
       if (isBootCertified_(b) !== certFlag) return;
-      if (t.outcome === RESULTS_FAILURE_OUTCOME) fail++;
-      else if (RESULTS_SUCCESS_OUTCOMES.indexOf(t.outcome) !== -1) succ++;
+      if (cls === 'failure') fail++;
+      else succ++;
     });
     return { succ: succ, fail: fail, total: succ + fail };
   }
@@ -2630,18 +2697,18 @@ function renderResultsAnalytics() {
     var month = t.date.slice(0, 7); // yyyy-MM
     if (!monthGroups[month]) {
       monthGroups[month] = { month: month, total: 0, counts: {} };
-      OUTCOME_ORDER.forEach(function(o) { monthGroups[month].counts[o] = 0; });
     }
     monthGroups[month].total++;
-    monthGroups[month].counts[t.outcome] = (monthGroups[month].counts[t.outcome] || 0) + 1;
+    var k = t.outcome || 'DNS';
+    monthGroups[month].counts[k] = (monthGroups[month].counts[k] || 0) + 1;
   });
   var months = Object.keys(monthGroups).sort();
   var trendRowsHtml = months.map(function(m) {
     var g = monthGroups[m];
-    var segHtml = OUTCOME_ORDER.map(function(o) {
-      if (!g.counts[o]) return '';
-      var w = (g.counts[o] / g.total) * 100;
-      return '<div class="trend-bar-seg" style="width:' + w + '%; background:' + OUTCOME_META[o].color + '"></div>';
+    var segHtml = outcomeCats.map(function(cat) {
+      if (!g.counts[cat.key]) return '';
+      var w = (g.counts[cat.key] / g.total) * 100;
+      return '<div class="trend-bar-seg" style="width:' + w + '%; background:' + cat.color + '"></div>';
     }).join('');
     var label = new Date(m + '-01').toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
     return '<div class="trend-row"><div class="trend-month">' + label + '</div>' +
@@ -3130,8 +3197,29 @@ function updateTrialId() {
 }
 
 // ----- Outcome change -----
-function onOutcomeChange() {
-  var outcome = document.getElementById('t-outcome').value;
+// Outcome is multi-select (e.g. NP + VOB: no puncture, but venom on the
+// boot), stored as one "+"-joined string in canonical OUTCOME_ORDER order.
+// A few combinations are contradictory, so picking one clears its
+// opposite: DNS (didn't strike) excludes everything else; P (puncture)
+// and NP/NP-M (no puncture) exclude each other, and NP-M is just a more
+// specific NP so those two exclude each other too. Mixed results across
+// regions belong in the per-region outcomes below, not here.
+function getSelectedOutcome_() {
+  var picked = Array.prototype.map.call(
+    document.querySelectorAll('#t-outcome input:checked'), function(cb) { return cb.value; });
+  return normalizeOutcome_(picked.join('+'));
+}
+
+function onOutcomeChange(changedCb) {
+  if (changedCb && changedCb.checked) {
+    var clears = { 'DNS': ['P', 'NP', 'NP-M', 'VOB'], 'P': ['NP', 'NP-M', 'DNS'], 'NP': ['P', 'NP-M', 'DNS'],
+                   'NP-M': ['P', 'NP', 'DNS'], 'VOB': ['DNS'] }[changedCb.value] || [];
+    clears.forEach(function(code) {
+      var other = document.querySelector('#t-outcome input[value="' + code + '"]');
+      if (other) other.checked = false;
+    });
+  }
+  var outcome = getSelectedOutcome_();
   var regionSec = document.getElementById('region-section');
   var strikesSec = document.getElementById('strikes-section');
 
@@ -3303,7 +3391,7 @@ async function submitTrialForm() {
   var date = document.getElementById('t-date').value;
   var bootId = document.getElementById('t-boot').value;
   var snakeId = document.getElementById('t-snake').value;
-  var outcome = document.getElementById('t-outcome').value;
+  var outcome = getSelectedOutcome_();
   var strikes = document.getElementById('t-strikes').value;
   var bites = document.getElementById('t-bites').value;
 
@@ -3426,7 +3514,8 @@ function clearTrialForm() {
   document.getElementById('t-species-filter').value = '';
   document.getElementById('t-snake').value = '';
   populateSnakeDropdown();
-  document.getElementById('t-outcome').value = '';
+  document.querySelectorAll('#t-outcome input').forEach(function(cb) { cb.checked = false; });
+  onOutcomeChange();
   document.getElementById('t-strikes').value = '';
   document.getElementById('t-bites').value = '';
   document.getElementById('t-notes').value = '';
