@@ -1313,6 +1313,23 @@
         </table>
       </div>
     </div>
+
+    <!-- The initial controlled trials that established fangs can puncture
+         the gumboots — from the separate "Controls" sheet, listed here for
+         reference but kept out of the "All Conducted Trials" table/count
+         above so it doesn't look like part of the live field study. -->
+    <div class="card">
+      <div class="card-title">Controlled Trials</div>
+      <div class="reg-list-count" id="control-trials-count"></div>
+      <div class="results-table-wrap">
+        <table class="results-table">
+          <thead>
+            <tr><th>Date</th><th>Snake ID</th><th>Boot ID</th><th>Outcome</th></tr>
+          </thead>
+          <tbody id="control-trials-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <div id="tab-content-res-analytics" class="tab-content">
@@ -1769,7 +1786,7 @@ function renderPage(name) {
   document.getElementById('header-sub').textContent = titles[name] || '';
   if (name === 'boot-list') renderBootList();
   if (name === 'snake-list') renderSnakeList();
-  if (name === 'results') { renderResultsTrialsTable(); renderResultsAnalytics(); }
+  if (name === 'results') { renderResultsTrialsTable(); renderControlTrialsTable(); renderResultsAnalytics(); }
   window.scrollTo(0, 0);
 }
 
@@ -1950,6 +1967,7 @@ function loadControlTrials() {
       return t;
     });
     if (document.getElementById('page-results').classList.contains('active')) {
+      renderControlTrialsTable();
       renderResultsAnalytics();
     }
   }).catch(function(e) {
@@ -2210,16 +2228,16 @@ function switchResultsTab(tabId) {
   document.getElementById('tab-content-' + tabId).classList.add('active');
 }
 
-function renderResultsTrialsTable() {
-  var tbody = document.getElementById('results-trials-tbody');
-  var countEl = document.getElementById('results-trials-count');
+function renderTrialsTableInto_(tbodyId, countId, trials, emptyMsg, countSuffix) {
+  var tbody = document.getElementById(tbodyId);
+  var countEl = document.getElementById(countId);
   if (!tbody) return;
-  var rows = allTrialsCache.slice().sort(function(a, b) {
+  var rows = trials.slice().sort(function(a, b) {
     return (b.date || '').localeCompare(a.date || '') || (b.trialId || '').localeCompare(a.trialId || '');
   });
-  countEl.textContent = rows.length + ' trial' + (rows.length === 1 ? '' : 's') + ' conducted';
+  if (countEl) countEl.textContent = rows.length + ' trial' + (rows.length === 1 ? '' : 's') + ' ' + countSuffix;
   if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state">No trials recorded yet.</div></td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4"><div class="empty-state">' + emptyMsg + '</div></td></tr>';
     return;
   }
   tbody.innerHTML = rows.map(function(t) {
@@ -2230,6 +2248,15 @@ function renderResultsTrialsTable() {
       '<td>' + outcomeBadgesHtml_(t.outcome) + '</td>' +
     '</tr>';
   }).join('');
+}
+
+function renderResultsTrialsTable() {
+  renderTrialsTableInto_('results-trials-tbody', 'results-trials-count', allTrialsCache, 'No trials recorded yet.', 'conducted');
+}
+
+function renderControlTrialsTable() {
+  renderTrialsTableInto_('control-trials-tbody', 'control-trials-count', controlTrialsCache,
+    'No control trials yet — paste rows into the "Controls" sheet (same columns as Trials) to see them here.', 'recorded');
 }
 
 // Groups trials by a key, computing a puncture-rate per group over trials
