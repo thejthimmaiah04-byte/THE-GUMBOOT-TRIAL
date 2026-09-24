@@ -1707,6 +1707,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadRegistries();
   initChecklist();
   loadTrialLog();
+  loadControlTrials();
   flushPendingQueue();
   setTimeout(dismissSplash, 2600);
 
@@ -1929,6 +1930,30 @@ function loadTrialLog() {
       applyTrialsCache_(cached.data);
     }
     updateDataErrorBanner();
+  });
+}
+
+// ----- Control studies (initial controlled trials, kept separate from the
+// live field study) -----
+// Pasted by hand into a separate "Controls" sheet (same columns as
+// Trials), not entered through this app's Trial form — loaded once at
+// startup rather than on the same aggressive poll/retry cycle as the live
+// boots/snakes/trials data, since it's reference data that changes rarely
+// if ever. A load failure is non-blocking (no error banner): the Control
+// Studies section just stays empty until the next successful load.
+var controlTrialsCache = [];
+
+function loadControlTrials() {
+  apiGet('getControlTrials').then(function(trials) {
+    controlTrialsCache = (trials || []).map(function(t) {
+      t.outcome = normalizeOutcome_(t.outcome);
+      return t;
+    });
+    if (document.getElementById('page-results').classList.contains('active')) {
+      renderResultsAnalytics();
+    }
+  }).catch(function(e) {
+    console.error('Failed to load control trials:', e);
   });
 }
 
@@ -2342,6 +2367,81 @@ function buildRegionStruckChartSvg_(regionOrder, speciesList, countsBySpecies, t
     '</svg>';
 }
 
+// ----- Control Studies -----
+// The initial controlled trials that established fangs can puncture the
+// gumboots at all, pasted by hand into a separate "Controls" sheet (same
+// TRIAL_HEADERS columns as Trials) so they never mix into the live field
+// study's protection/puncture rates above. A smaller, focused summary
+// rather than the full main dashboard — region/trend/cost charts don't
+// really say anything for a small controlled test batch.
+function buildControlStudiesHtml_(trials) {
+  var total = trials.length;
+  if (total === 0) {
+    return '<div class="card"><div class="empty-state">No control trials yet — paste rows into the "Controls" sheet (same columns as Trials) to see them here.</div></div>';
+  }
+
+  var successCount = 0, failureCount = 0, excludedCount = 0, counts = {};
+  trials.forEach(function(t) {
+    var cls = outcomeClass_(t);
+    if (cls === 'success') successCount++;
+    else if (cls === 'failure') failureCount++;
+    else excludedCount++;
+    var k = t.outcome || 'DNS';
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  var validCount = successCount + failureCount;
+  var protectionRate = validCount ? Math.round((successCount / validCount) * 100) : null;
+  var punctureRate = validCount ? Math.round((failureCount / validCount) * 100) : null;
+
+  var statsHtml = '<div class="card"><div class="card-title">Control Studies &mdash; At a Glance</div><div class="stat-row">' +
+    '<div class="stat-tile"><div class="stat-value">' + total + '</div><div class="stat-label">Total Trials</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + (protectionRate === null ? '—' : protectionRate + '%') + '</div><div class="stat-label">Protection Rate</div></div>' +
+    '<div class="stat-tile"><div class="stat-value' + (punctureRate && punctureRate > 30 ? ' bad' : '') + '">' + (punctureRate === null ? '—' : punctureRate + '%') + '</div><div class="stat-label">Puncture Rate</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + excludedCount + '</div><div class="stat-label">Excluded (N/A)</div></div>' +
+    '</div><div class="stat-caption">These are the initial controlled trials that established fangs can puncture the gumboots — kept separate from the live field study\'s rates above so they don\'t mix into it.</div></div>';
+
+  var summarySplitHtml = '<div class="summary-split-bar">' +
+    (successCount ? '<div class="summary-split-seg" style="flex:' + successCount + '; background:var(--green)"></div>' : '') +
+    (failureCount ? '<div class="summary-split-seg" style="flex:' + failureCount + '; background:var(--danger)"></div>' : '') +
+    (excludedCount ? '<div class="summary-split-seg" style="flex:' + excludedCount + '; background:#b0b8bc"></div>' : '') +
+  '</div><div class="legend" style="flex-direction:row; flex-wrap:wrap; gap:14px; margin-bottom:14px;">' +
+    '<div class="legend-item"><span class="legend-dot" style="background:var(--green)"></span><span>Success — ' + successCount + '</span></div>' +
+    '<div class="legend-item"><span class="legend-dot" style="background:var(--danger)"></span><span>Failure — ' + failureCount + '</span></div>' +
+    '<div class="legend-item"><span class="legend-dot" style="background:#b0b8bc"></span><span>Excluded — ' + excludedCount + '</span></div>' +
+  '</div>';
+  var gradientParts = [], cursor = 0, legendHtml = '';
+  outcomeCategories_(trials).forEach(function(cat) {
+    if (!counts[cat.key]) return;
+    var pct = (counts[cat.key] / total) * 100;
+    gradientParts.push(cat.color + ' ' + cursor + '% ' + (cursor + pct) + '%');
+    cursor += pct;
+    legendHtml += '<div class="legend-item"><span class="legend-dot" style="background:' + cat.color + '"></span>' +
+      '<span>' + cat.key + ' &mdash; ' + escapeHtml_(cat.label) + '</span><span class="lg-count">' + counts[cat.key] + '</span></div>';
+  });
+  var donutHtml = '<div class="card"><div class="card-title">Control Studies &mdash; Outcome Distribution</div>' +
+    summarySplitHtml +
+    '<div class="donut-wrap">' +
+      '<div class="donut" style="background:conic-gradient(' + gradientParts.join(', ') + ')">' +
+        '<div class="donut-hole"><div class="dh-value">' + total + '</div><div class="dh-label">Trials</div></div>' +
+      '</div>' +
+      '<div class="legend">' + legendHtml + '</div>' +
+    '</div></div>';
+
+  var byBoot = groupPunctureRate_(trials, function(t) { return t.bootId; }, function(t) {
+    return t.bootId + (t.bootBrand ? ' (' + t.bootBrand + ')' : '');
+  });
+  var bootHtml = '<div class="card"><div class="card-title">Control Studies &mdash; Puncture Rate by Boot</div>' +
+    buildBarChartHtml_(byBoot, 'No completed control trials with a struck outcome yet.') + '</div>';
+
+  var bySpecies = groupPunctureRate_(trials, function(t) { return t.speciesCode; }, function(t) {
+    return (SPECIES_NAMES_[t.speciesCode] || t.speciesCode) + ' (' + t.speciesCode + ')';
+  });
+  var speciesHtml = '<div class="card"><div class="card-title">Control Studies &mdash; Puncture Rate by Species</div>' +
+    buildBarChartHtml_(bySpecies, 'No completed control trials with a struck outcome yet.') + '</div>';
+
+  return statsHtml + donutHtml + bootHtml + speciesHtml;
+}
+
 function renderResultsAnalytics() {
   var el = document.getElementById('results-analytics-body');
   if (!el) return;
@@ -2349,7 +2449,9 @@ function renderResultsAnalytics() {
   var total = trials.length;
 
   if (total === 0) {
-    el.innerHTML = '<div class="card"><div class="empty-state">No trials recorded yet — analytics will appear once trials are logged.</div></div>';
+    el.innerHTML = '<div class="card"><div class="empty-state">No trials recorded yet — analytics will appear once trials are logged.</div></div>' +
+      '<div class="analytics-section-header">Control Studies</div>' +
+      buildControlStudiesHtml_(controlTrialsCache);
     return;
   }
 
@@ -2746,7 +2848,9 @@ function renderResultsAnalytics() {
     sectionHeaderHtml_('Equipment') +
     costHtml +
     sectionHeaderHtml_('Trend') +
-    trendHtml;
+    trendHtml +
+    sectionHeaderHtml_('Control Studies') +
+    buildControlStudiesHtml_(controlTrialsCache);
 }
 
 // ----- Load registries -----

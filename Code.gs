@@ -28,6 +28,7 @@ function doGet(e) {
     if (action === 'getBoots') result = getBoots();
     else if (action === 'getSnakes') result = getSnakes();
     else if (action === 'getAllTrials') result = getAllTrials();
+    else if (action === 'getControlTrials') result = getControlTrials();
     else result = { error: 'Unknown action: ' + action };
   } catch (err) {
     result = { error: friendlyError_(err) };
@@ -256,8 +257,11 @@ function todayDateStr_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
 }
 
-function getAllTrials() {
-  var sheet = getOrCreateSheet_('Trials', TRIAL_HEADERS);
+// Shared by getAllTrials and getControlTrials — both sheets use the exact
+// same TRIAL_HEADERS layout, so the row-to-object mapping only needs to
+// exist once.
+function readTrialsSheet_(sheetName) {
+  var sheet = getOrCreateSheet_(sheetName, TRIAL_HEADERS);
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   var result = [];
@@ -278,6 +282,20 @@ function getAllTrials() {
     });
   }
   return result;
+}
+
+function getAllTrials() {
+  return readTrialsSheet_('Trials');
+}
+
+// "Controls" holds the initial controlled trials that established fangs
+// can puncture the gumboots at all — kept in a separate sheet (same
+// TRIAL_HEADERS layout, populated by hand/paste, not through the app's
+// Trial form) so it never mixes into the live field study's rates. Read
+// via its own action; getOrCreateSheet_ creates the sheet with headers on
+// first request if it doesn't exist yet.
+function getControlTrials() {
+  return readTrialsSheet_('Controls');
 }
 
 // ---------- Drive / image upload ----------
