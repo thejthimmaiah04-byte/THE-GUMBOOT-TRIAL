@@ -29,6 +29,7 @@ function doGet(e) {
     else if (action === 'getSnakes') result = getSnakes();
     else if (action === 'getAllTrials') result = getAllTrials();
     else if (action === 'getControlTrials') result = getControlTrials();
+    else if (action === 'getVideoAnalysis') result = getVideoAnalysis();
     else result = { error: 'Unknown action: ' + action };
   } catch (err) {
     result = { error: friendlyError_(err) };
@@ -60,6 +61,7 @@ function doPost(e) {
     else if (action === 'submitTrial') result = submitTrial(data);
     else if (action === 'updateBoot') result = updateBoot(data);
     else if (action === 'updateSnake') result = updateSnake(data);
+    else if (action === 'saveVideoAnalysis') result = saveVideoAnalysis(data);
     else result = { success: false, message: 'Unknown action: ' + action };
   } catch (err) {
     result = { success: false, message: friendlyError_(err) };
@@ -115,6 +117,20 @@ var BOOT_HEADERS = [
   'Last_Edited_By','Last_Edited_Date',
   'Cost_Per_Pair','Bill_Photo_Link','Store_Name','Store_Location',
   'Sole_Color','Rubber_Color','Pair_Number','Side'
+];
+
+// One row per Trial_ID (wide format — Video1_*/Video2_*/Video3_*/Video4_*
+// side by side) rather than one row per video, so a reviewer's progress
+// on a trial's 4 videos lives together and can be saved/updated as a
+// single upsert, matching how the review UI works (one tile per trial,
+// four video slots inside it, ticked off incrementally over time).
+var VIDEO_HEADERS = [
+  'Trial_ID',
+  'Video1_Reviewed', 'Video1_Strikes', 'Video1_Bites', 'Video1_StepsUntilBite', 'Video1_TriggerRegion',
+  'Video2_Reviewed', 'Video2_Strikes', 'Video2_Bites', 'Video2_StepsUntilBite', 'Video2_TriggerRegion',
+  'Video3_Reviewed', 'Video3_Strikes', 'Video3_Bites', 'Video3_StepsUntilBite', 'Video3_TriggerRegion',
+  'Video4_Reviewed', 'Video4_Strikes', 'Video4_Bites', 'Video4_StepsUntilBite', 'Video4_TriggerRegion',
+  'Reviewed_By', 'Last_Edited_Date'
 ];
 
 var SNAKE_HEADERS = [
@@ -296,6 +312,80 @@ function getAllTrials() {
 // first request if it doesn't exist yet.
 function getControlTrials() {
   return readTrialsSheet_('Controls');
+}
+
+// ---------- Video Analysis ----------
+// One row per Trial_ID in a "VIDEO ANALYSIS" sheet, holding review data
+// for that trial's 4 videos (strikes, bites, steps until bite, and the
+// region of the strike that triggered the bite, per video) plus a
+// reviewed flag per video.
+function videoRowToObject_(r) {
+  function video(base) {
+    return {
+      reviewed: !!r[base], strikes: r[base + 1], bites: r[base + 2],
+      stepsUntilBite: r[base + 3], triggerRegion: r[base + 4]
+    };
+  }
+  return {
+    trialId: r[0],
+    videos: [video(1), video(6), video(11), video(16)],
+    reviewedBy: r[21], lastEditedDate: r[22]
+  };
+}
+
+function getVideoAnalysis() {
+  var sheet = getOrCreateSheet_('VIDEO ANALYSIS', VIDEO_HEADERS);
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  var result = [];
+  for (var i = 1; i < data.length; i++) {
+    var r = data[i];
+    if (!r[0]) continue;
+    result.push(videoRowToObject_(r));
+  }
+  return result;
+}
+
+// Upsert by Trial_ID — the review UI always sends the full current state
+// of all 4 videos for a trial (not just what changed), since progress is
+// ticked off incrementally over possibly many separate visits to the same
+// tile. A first save for a trial appends a new row; every save after that
+// overwrites the existing row in place.
+function saveVideoAnalysis(data) {
+  var missing = missingFields_(data, [{ key: 'trialId', label: 'Trial ID' }]);
+  if (missing.length) {
+    return { success: false, message: 'Missing: ' + missing.join(', ') };
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return { success: false, message: 'Server busy — please try again in a moment.' };
+  }
+  try {
+    var sheet = getOrCreateSheet_('VIDEO ANALYSIS', VIDEO_HEADERS);
+    var values = sheet.getDataRange().getValues();
+    var rowIdx = -1;
+    for (var i = 1; i < values.length; i++) {
+      if (values[i][0] === data.trialId) { rowIdx = i; break; }
+    }
+
+    var videos = data.videos || [];
+    var row = [data.trialId];
+    for (var v = 0; v < 4; v++) {
+      var vd = videos[v] || {};
+      row.push(!!vd.reviewed, vd.strikes || '', vd.bites || '', vd.stepsUntilBite || '', vd.triggerRegion || '');
+    }
+    row.push(sanitizeCell_(data.reviewedBy || ''), todayDateStr_());
+
+    if (rowIdx === -1) {
+      sheet.appendRow(row);
+    } else {
+      sheet.getRange(rowIdx + 1, 1, 1, row.length).setValues([row]);
+    }
+    return { success: true, message: 'Video analysis saved: ' + data.trialId };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 // ---------- Drive / image upload ----------

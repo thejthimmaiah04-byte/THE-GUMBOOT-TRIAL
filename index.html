@@ -316,6 +316,21 @@
       font-size: 12px; color: var(--text-light); margin-bottom: 10px;
     }
 
+    /* --- Video Analysis --- */
+    .va-tile summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .va-tile summary::-webkit-details-marker { display: none; }
+    .va-badges { display: flex; gap: 6px; flex-shrink: 0; }
+    .va-badge {
+      width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; background: var(--bg); color: var(--text-mid);
+      border: 1.5px solid var(--border);
+    }
+    .va-badge.done { background: var(--green); color: #fff; border-color: var(--green); }
+    .va-video-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .va-video-block:first-of-type { margin-top: 12px; }
+    .va-video-block .chk-item { background: none; padding: 4px 0 8px; }
+
     /* --- Results: trials table --- */
     .results-table-wrap { overflow-x: auto; }
     .results-table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -682,6 +697,9 @@
     </button>
     <button class="tile tile-results" onclick="switchPage('results')">
       <span>Results</span>
+    </button>
+    <button class="tile tile-secondary" onclick="switchPage('video-analysis')">
+      <span>Video Analysis</span>
     </button>
   </div>
 </div>
@@ -1337,6 +1355,22 @@
   </div>
 </div>
 
+<!-- ==================== PAGE: VIDEO ANALYSIS ==================== -->
+<div id="page-video-analysis" class="page">
+  <div class="card">
+    <div class="card-title">Video Analysis</div>
+    <label for="va-search">Search</label>
+    <input type="text" id="va-search" placeholder="Search by Trial ID, Snake ID, Boot ID..." oninput="renderVideoAnalysisList()">
+    <div class="reg-list-count" id="va-list-count"></div>
+  </div>
+  <div id="va-list-items"></div>
+
+  <div class="card">
+    <div class="card-title">Video Analysis Summary</div>
+    <div id="va-summary-body"></div>
+  </div>
+</div>
+
 <!-- ==================== BOTTOM NAV ==================== -->
 <!-- ==================== LOADING OVERLAY ==================== -->
 <div id="loading">
@@ -1666,6 +1700,7 @@ function flushPendingQueue() {
       }
       loadRegistries();
       loadTrialLog();
+      loadVideoAnalysis();
       flushPendingQueue();
     })
     .catch(function() {
@@ -1725,6 +1760,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initChecklist();
   loadTrialLog();
   loadControlTrials();
+  loadVideoAnalysis();
   flushPendingQueue();
   setTimeout(dismissSplash, 2600);
 
@@ -1782,11 +1818,12 @@ function renderPage(name) {
   document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   document.getElementById('page-' + name).classList.add('active');
   var titles = { home: 'Home', checklist: 'Checklist', trial: 'Trial Log & Record', boot: 'Register Boot', snake: 'Register Snake',
-    'boot-list': 'Registered Boots', 'snake-list': 'Registered Snakes', results: 'Results' };
+    'boot-list': 'Registered Boots', 'snake-list': 'Registered Snakes', results: 'Results', 'video-analysis': 'Video Analysis' };
   document.getElementById('header-sub').textContent = titles[name] || '';
   if (name === 'boot-list') renderBootList();
   if (name === 'snake-list') renderSnakeList();
   if (name === 'results') { renderResultsTrialsTable(); renderControlTrialsTable(); renderResultsAnalytics(); }
+  if (name === 'video-analysis') { renderVideoAnalysisList(); renderVideoAnalysisSummary(); }
   window.scrollTo(0, 0);
 }
 
@@ -1973,6 +2010,192 @@ function loadControlTrials() {
   }).catch(function(e) {
     console.error('Failed to load control trials:', e);
   });
+}
+
+// ----- Video Analysis -----
+// Each conducted trial (never a control trial — those live in a separate
+// sheet and workflow entirely) has 4 videos to review. Review data is
+// stored one row per Trial_ID in a "VIDEO ANALYSIS" sheet, wide-format
+// (Video1_*..Video4_* columns), matching the tile UI below: one tile per
+// trial, one Reviewed checkbox + 4 fields per video inside it, saved as a
+// whole with each Save tap so partial progress on a trial's 4 videos
+// survives coming back to it across separate review sessions.
+var videoAnalysisCache = [];
+var vaVisibleTrials_ = [];
+
+function loadVideoAnalysis() {
+  apiGet('getVideoAnalysis').then(function(rows) {
+    videoAnalysisCache = rows || [];
+    if (document.getElementById('page-video-analysis').classList.contains('active')) {
+      renderVideoAnalysisList();
+      renderVideoAnalysisSummary();
+    }
+  }).catch(function(e) {
+    console.error('Failed to load video analysis:', e);
+  });
+}
+
+function videoAnalysisFor_(trialId) {
+  return videoAnalysisCache.find(function(v) { return v.trialId === trialId; }) || null;
+}
+
+function emptyVaVideo_() {
+  return { reviewed: false, strikes: '', bites: '', stepsUntilBite: '', triggerRegion: '' };
+}
+
+function vaVideoBlockHtml_(idx, n, vd) {
+  vd = vd || emptyVaVideo_();
+  var fid = 'va-' + idx + '-v' + n + '-';
+  var regionOptions = '<option value="">-- region --</option>' + Object.keys(REGION_LABELS).map(function(code) {
+    return '<option value="' + code + '"' + (vd.triggerRegion === code ? ' selected' : '') + '>' + escapeHtml_(REGION_LABELS[code]) + '</option>';
+  }).join('');
+  return '<div class="va-video-block">' +
+    '<label class="chk-item"><input type="checkbox" id="' + fid + 'reviewed"' + (vd.reviewed ? ' checked' : '') + '><span>Video ' + n + ' reviewed</span></label>' +
+    '<div class="row">' +
+      '<div><label for="' + fid + 'strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="' + fid + 'strikes" value="' + escapeHtml_(String(vd.strikes || '')) + '"></div>' +
+      '<div><label for="' + fid + 'bites">Number of Bites</label><input type="number" min="0" inputmode="numeric" id="' + fid + 'bites" value="' + escapeHtml_(String(vd.bites || '')) + '"></div>' +
+    '</div>' +
+    '<div class="row">' +
+      '<div><label for="' + fid + 'steps">Steps Until Bite</label><input type="number" min="0" inputmode="numeric" id="' + fid + 'steps" value="' + escapeHtml_(String(vd.stepsUntilBite || '')) + '"></div>' +
+      '<div><label for="' + fid + 'region">Region That Triggered Bite</label><select id="' + fid + 'region">' + regionOptions + '</select></div>' +
+    '</div>' +
+  '</div>';
+}
+
+function vaTileHtml_(idx, t) {
+  var va = videoAnalysisFor_(t.trialId);
+  var videos = (va && va.videos) || [emptyVaVideo_(), emptyVaVideo_(), emptyVaVideo_(), emptyVaVideo_()];
+  var badgesHtml = [1, 2, 3, 4].map(function(n) {
+    return '<span class="va-badge' + (videos[n - 1] && videos[n - 1].reviewed ? ' done' : '') + '">' + n + '</span>';
+  }).join('');
+  var blocksHtml = [1, 2, 3, 4].map(function(n) { return vaVideoBlockHtml_(idx, n, videos[n - 1]); }).join('');
+  return '<details class="card va-tile">' +
+    '<summary>' +
+      '<div class="reg-main">' +
+        '<div class="reg-id">' + escapeHtml_(t.trialId) + '</div>' +
+        '<div class="reg-sub">' + escapeHtml_(t.date) + ' &middot; ' + escapeHtml_(t.snakeId) + ' vs ' + escapeHtml_(t.bootId) + '</div>' +
+      '</div>' +
+      '<div class="va-badges">' + badgesHtml + '</div>' +
+    '</summary>' +
+    '<div>' + blocksHtml +
+      '<button type="button" class="btn btn-primary" style="width:100%; margin-top:14px;" onclick="saveVideoTile(' + idx + ')">Save Review</button>' +
+    '</div>' +
+  '</details>';
+}
+
+function renderVideoAnalysisList() {
+  var searchEl = document.getElementById('va-search');
+  var listEl = document.getElementById('va-list-items');
+  var countEl = document.getElementById('va-list-count');
+  if (!listEl) return;
+  var q = (searchEl.value || '').trim().toLowerCase();
+  var items = allTrialsCache.filter(function(t) {
+    if (!q) return true;
+    return [t.trialId, t.snakeId, t.bootId].join(' ').toLowerCase().indexOf(q) !== -1;
+  }).sort(function(a, b) {
+    return (b.date || '').localeCompare(a.date || '') || (b.trialId || '').localeCompare(a.trialId || '');
+  });
+  var fullyReviewed = allTrialsCache.filter(function(t) {
+    var va = videoAnalysisFor_(t.trialId);
+    return va && va.videos.length === 4 && va.videos.every(function(v) { return v.reviewed; });
+  }).length;
+  countEl.textContent = items.length + ' of ' + allTrialsCache.length + ' trials shown — ' + fullyReviewed + ' fully reviewed (all 4 videos)';
+  vaVisibleTrials_ = items;
+  if (items.length === 0) {
+    listEl.innerHTML = '<div class="card"><div class="empty-state">No trials found.</div></div>';
+    return;
+  }
+  listEl.innerHTML = items.map(function(t, idx) { return vaTileHtml_(idx, t); }).join('');
+}
+
+function saveVideoTile(idx) {
+  var t = vaVisibleTrials_[idx];
+  if (!t) return;
+  var videos = [1, 2, 3, 4].map(function(n) {
+    var fid = 'va-' + idx + '-v' + n + '-';
+    return {
+      reviewed: document.getElementById(fid + 'reviewed').checked,
+      strikes: document.getElementById(fid + 'strikes').value.trim(),
+      bites: document.getElementById(fid + 'bites').value.trim(),
+      stepsUntilBite: document.getElementById(fid + 'steps').value.trim(),
+      triggerRegion: document.getElementById(fid + 'region').value
+    };
+  });
+  var payload = { trialId: t.trialId, videos: videos, reviewedBy: getRecorderName() };
+  apiPost('saveVideoAnalysis', payload).then(function(result) {
+    return { success: result.success, message: result.message };
+  }).catch(function() {
+    var queued = queueSubmission('saveVideoAnalysis', payload);
+    return queued
+      ? { success: true, message: t.trialId + ': queued offline, will retry automatically' }
+      : { success: false, message: t.trialId + ': could not queue offline (device storage full) — NOT saved' };
+  }).then(function(result) {
+    showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) {
+      var record = { trialId: t.trialId, videos: videos, reviewedBy: payload.reviewedBy, lastEditedDate: '' };
+      var existingIdx = videoAnalysisCache.findIndex(function(v) { return v.trialId === t.trialId; });
+      if (existingIdx === -1) videoAnalysisCache.push(record); else videoAnalysisCache[existingIdx] = record;
+      renderVideoAnalysisList();
+      renderVideoAnalysisSummary();
+    }
+  });
+}
+
+// Summary: only videos actually marked "reviewed" count toward the
+// numbers below — an in-progress, unsaved/unreviewed video slot with a
+// stray number in it shouldn't skew averages meant to represent finished
+// review work.
+function renderVideoAnalysisSummary() {
+  var el = document.getElementById('va-summary-body');
+  if (!el) return;
+  var reviewed = [];
+  videoAnalysisCache.forEach(function(va) {
+    (va.videos || []).forEach(function(v) {
+      if (v.reviewed) reviewed.push(v);
+    });
+  });
+  var totalTrials = allTrialsCache.length;
+  var fullyReviewedTrials = allTrialsCache.filter(function(t) {
+    var va = videoAnalysisFor_(t.trialId);
+    return va && va.videos.length === 4 && va.videos.every(function(v) { return v.reviewed; });
+  }).length;
+  if (reviewed.length === 0) {
+    el.innerHTML = '<div class="empty-state">No videos marked reviewed yet — summary will appear once some are.</div>';
+    return;
+  }
+  function numsOf_(key) {
+    return reviewed.map(function(v) { return parseFloat(v[key]); }).filter(function(n) { return !isNaN(n); });
+  }
+  function avg_(arr) { return arr.length ? Math.round((arr.reduce(function(a, b) { return a + b; }, 0) / arr.length) * 10) / 10 : null; }
+  var avgStrikes = avg_(numsOf_('strikes'));
+  var avgBites = avg_(numsOf_('bites'));
+  var avgSteps = avg_(numsOf_('stepsUntilBite'));
+
+  var statsHtml = '<div class="stat-row">' +
+    '<div class="stat-tile"><div class="stat-value">' + fullyReviewedTrials + ' / ' + totalTrials + '</div><div class="stat-label">Trials Fully Reviewed</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + reviewed.length + '</div><div class="stat-label">Videos Reviewed</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + (avgStrikes === null ? '—' : avgStrikes) + '</div><div class="stat-label">Avg Strikes / Video</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + (avgBites === null ? '—' : avgBites) + '</div><div class="stat-label">Avg Bites / Video</div></div>' +
+    '</div><div class="stat-caption">Based on the ' + reviewed.length + ' video' + (reviewed.length === 1 ? '' : 's') + ' ticked "reviewed" so far, out of ' + (totalTrials * 4) + ' total across all trials.</div>';
+
+  var stepsHtml = '<div class="stat-row" style="margin-top:12px;">' +
+    '<div class="stat-tile"><div class="stat-value">' + (avgSteps === null ? '—' : avgSteps) + '</div><div class="stat-label">Avg Steps Until Bite</div></div>' +
+    '</div>';
+
+  // ----- Region that triggered the bite, by count -----
+  var regionGroups = {};
+  reviewed.forEach(function(v) {
+    if (!v.triggerRegion) return;
+    if (!regionGroups[v.triggerRegion]) regionGroups[v.triggerRegion] = { key: v.triggerRegion, label: REGION_NAMES[v.triggerRegion] || v.triggerRegion, total: 0 };
+    regionGroups[v.triggerRegion].total++;
+  });
+  var regionRows = Object.keys(regionGroups).map(function(k) { return regionGroups[k]; })
+    .sort(function(a, b) { return b.total - a.total; });
+  var regionChartHtml = '<div style="margin-top:16px;"><div class="card-title" style="border:none; padding:0; margin-bottom:8px;">Region That Triggered the Bite</div>' +
+    buildCountBarChartHtml_(regionRows, 'No triggering region recorded yet.', 'var(--danger)', function(n) { return ' bite' + (n === 1 ? '' : 's'); }) +
+    '</div>';
+
+  el.innerHTML = statsHtml + stepsHtml + regionChartHtml;
 }
 
 function changeMonth(delta) {
