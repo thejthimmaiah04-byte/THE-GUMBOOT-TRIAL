@@ -2131,6 +2131,28 @@ function outcomeClass_(t) {
   return 'excluded';
 }
 
+// Breaks the flat "Excluded" count down by the specific reason, rather
+// than lumping DNS and Non-reactive (and any trial with a genuinely blank
+// outcome) into one unexplained number.
+function excludedReasonBreakdown_(trials) {
+  var reasons = {};
+  trials.forEach(function(t) {
+    if (outcomeClass_(t) !== 'excluded') return;
+    var codes = outcomeCodes_(t);
+    var label;
+    if (codes.indexOf('DNS') !== -1) label = 'Did Not Strike';
+    else if (codes.indexOf('NP-R') !== -1) label = 'Non-reactive';
+    else label = 'no outcome recorded';
+    reasons[label] = (reasons[label] || 0) + 1;
+  });
+  return Object.keys(reasons).map(function(k) { return { label: k, count: reasons[k] }; })
+    .sort(function(a, b) { return b.count - a.count; });
+}
+
+function excludedReasonText_(trials) {
+  return excludedReasonBreakdown_(trials).map(function(p) { return p.count + ' ' + p.label; }).join(', ');
+}
+
 function outcomeBadgesHtml_(outcomeStr, suffixText) {
   var codes = outcomeStr ? String(outcomeStr).split('+') : [];
   if (codes.length === 0) return '<span class="outcome-badge">-</span>';
@@ -2425,7 +2447,9 @@ function buildControlStudiesHtml_(trials) {
     '<div class="stat-tile"><div class="stat-value">' + (protectionRate === null ? '—' : protectionRate + '%') + '</div><div class="stat-label">Protection Rate</div></div>' +
     '<div class="stat-tile"><div class="stat-value' + (punctureRate && punctureRate > 30 ? ' bad' : '') + '">' + (punctureRate === null ? '—' : punctureRate + '%') + '</div><div class="stat-label">Puncture Rate</div></div>' +
     '<div class="stat-tile"><div class="stat-value">' + excludedCount + '</div><div class="stat-label">Excluded (N/A)</div></div>' +
-    '</div><div class="stat-caption">These are the initial controlled trials that established fangs can puncture the gumboots — kept separate from the live field study\'s rates above so they don\'t mix into it.</div></div>';
+    '</div><div class="stat-caption">These are the initial controlled trials that established fangs can puncture the gumboots — kept separate from the live field study\'s rates above so they don\'t mix into it.' +
+    (excludedCount ? ' ' + excludedCount + ' trial' + (excludedCount === 1 ? ' is' : 's are') + ' excluded: ' + excludedReasonText_(trials) + '.' : '') +
+    '</div></div>';
 
   var summarySplitHtml = '<div class="summary-split-bar">' +
     (successCount ? '<div class="summary-split-seg" style="flex:' + successCount + '; background:var(--green)"></div>' : '') +
@@ -2505,7 +2529,9 @@ function renderResultsAnalytics() {
     '<div class="stat-tile"><div class="stat-value' + (punctureRate && punctureRate > 30 ? ' bad' : '') + '">' + (punctureRate === null ? '—' : punctureRate + '%') + '</div><div class="stat-label">Puncture Rate</div></div>' +
     '<div class="stat-tile"><div class="stat-value">' + excludedCount + '</div><div class="stat-label">Excluded (N/A)</div></div>' +
     '</div><div class="stat-caption">Protection &amp; puncture rate are of the ' + validCount + ' trial' + (validCount === 1 ? '' : 's') +
-    ' where the snake struck and the trial completed — non-reactive and incomplete trials (' + excludedCount + ') are excluded so they don\'t distort how the boots actually performed.</div></div>';
+    ' where the snake struck and the trial completed.' +
+    (excludedCount ? ' ' + excludedCount + ' trial' + (excludedCount === 1 ? ' is' : 's are') + ' excluded so they don\'t distort how the boots actually performed: ' + excludedReasonText_(trials) + '.' : '') +
+    '</div></div>';
 
   // ----- Environmental conditions (temp & humidity) -----
   // Uses every trial with a logged reading, regardless of outcome — the
