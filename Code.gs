@@ -127,7 +127,7 @@ var BOOT_HEADERS = [
 var VIDEO_HEADERS = [
   'Trial_ID',
   'Video1_Reviewed', 'Video2_Reviewed', 'Video3_Reviewed', 'Video4_Reviewed',
-  'Strikes', 'Bites', 'StepsUntilBite', 'TriggerRegion',
+  'Strikes', 'Bites', 'StepsUntilBite', 'TriggerRegion', 'Notes',
   'Reviewed_By', 'Last_Edited_Date'
 ];
 
@@ -321,8 +321,8 @@ function videoRowToObject_(r) {
   return {
     trialId: r[0],
     reviewed: [!!r[1], !!r[2], !!r[3], !!r[4]],
-    strikes: r[5], bites: r[6], stepsUntilBite: r[7], triggerRegion: r[8],
-    reviewedBy: r[9], lastEditedDate: r[10]
+    strikes: r[5], bites: r[6], stepsUntilBite: r[7], triggerRegion: r[8], notes: r[9],
+    reviewedBy: r[10], lastEditedDate: r[11]
   };
 }
 
@@ -366,6 +366,7 @@ function saveVideoAnalysis(data) {
     var row = [data.trialId];
     for (var v = 0; v < 4; v++) row.push(!!reviewed[v]);
     row.push(data.strikes || '', data.bites || '', data.stepsUntilBite || '', data.triggerRegion || '');
+    row.push(sanitizeCell_(data.notes || ''));
     row.push(sanitizeCell_(data.reviewedBy || ''), todayDateStr_());
 
     if (rowIdx === -1) {

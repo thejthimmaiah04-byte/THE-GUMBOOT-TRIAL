@@ -321,7 +321,7 @@
       background: none; border: none; color: var(--green); font-weight: 700;
       font-size: 14px; padding: 0; margin-bottom: 12px; cursor: pointer; min-height: 32px;
     }
-    .va-badges { display: flex; gap: 6px; flex-shrink: 0; margin-bottom: 4px; }
+    .va-badges { display: flex; flex-wrap: nowrap; gap: 6px; flex-shrink: 0; margin-bottom: 4px; }
     .va-badge {
       width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
@@ -329,8 +329,13 @@
       border: 1.5px solid var(--border);
     }
     .va-badge.done { background: var(--green); color: #fff; border-color: var(--green); }
-    .va-badge-check { cursor: pointer; }
-    .va-badge-check input { position: absolute; opacity: 0; width: 24px; height: 24px; cursor: pointer; }
+    /* position:relative here is load-bearing — without it, the absolutely
+       positioned checkbox below positions against a distant ancestor
+       instead of its own label, so all 4 invisible hit-areas can end up
+       stacked on top of each other at one spot instead of each covering
+       its own numbered circle, making taps land on the wrong badge. */
+    .va-badge-check { position: relative; cursor: pointer; flex-shrink: 0; }
+    .va-badge-check input { position: absolute; inset: 0; opacity: 0; width: 24px; height: 24px; margin: 0; cursor: pointer; }
 
     /* --- Results: trials table --- */
     .results-table-wrap { overflow-x: auto; }
@@ -2068,7 +2073,7 @@ function videoAnalysisFor_(trialId) {
 }
 
 function emptyVideoAnalysis_(trialId) {
-  return { trialId: trialId, reviewed: [false, false, false, false], strikes: '', bites: '', stepsUntilBite: '', triggerRegion: '' };
+  return { trialId: trialId, reviewed: [false, false, false, false], strikes: '', bites: '', stepsUntilBite: '', triggerRegion: '', notes: '' };
 }
 
 // One set of fields per trial, not per video — all 4 videos are watched
@@ -2087,7 +2092,9 @@ function vaDataFieldsHtml_(idPrefix, va) {
     '<div class="row">' +
       '<div><label for="' + idPrefix + 'steps">Steps Until Bite</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'steps" value="' + escapeHtml_(String(va.stepsUntilBite || '')) + '"></div>' +
       '<div><label for="' + idPrefix + 'region">Region That Triggered Bite</label><select id="' + idPrefix + 'region">' + regionOptions + '</select></div>' +
-    '</div>';
+    '</div>' +
+    '<label for="' + idPrefix + 'notes">Notes</label>' +
+    '<textarea id="' + idPrefix + 'notes" rows="3" placeholder="Anything worth flagging about this trial\'s videos...">' + escapeHtml_(va.notes || '') + '</textarea>';
 }
 
 function vaBadgesHtml_(idPrefix, va) {
@@ -2136,6 +2143,7 @@ function saveVideoReview() {
     bites: document.getElementById('va-review-bites').value.trim(),
     stepsUntilBite: document.getElementById('va-review-steps').value.trim(),
     triggerRegion: document.getElementById('va-review-region').value,
+    notes: document.getElementById('va-review-notes').value.trim(),
     reviewedBy: getRecorderName()
   };
   apiPost('saveVideoAnalysis', payload).then(function(result) {
@@ -2150,7 +2158,7 @@ function saveVideoReview() {
     if (result.success) {
       var record = {
         trialId: t.trialId, reviewed: reviewed, strikes: payload.strikes, bites: payload.bites,
-        stepsUntilBite: payload.stepsUntilBite, triggerRegion: payload.triggerRegion,
+        stepsUntilBite: payload.stepsUntilBite, triggerRegion: payload.triggerRegion, notes: payload.notes,
         reviewedBy: payload.reviewedBy, lastEditedDate: ''
       };
       var existingIdx = videoAnalysisCache.findIndex(function(v) { return v.trialId === t.trialId; });
