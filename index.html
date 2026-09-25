@@ -317,9 +317,17 @@
     }
 
     /* --- Video Analysis --- */
-    .va-tile summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .va-tile { border-bottom: 1px solid var(--border); }
+    .va-tile:last-child { border-bottom: none; }
+    .va-tile summary {
+      cursor: pointer; list-style: none; padding: 13px 4px; min-height: 44px;
+      display: flex; align-items: center;
+      font-family: 'Courier New', monospace; font-weight: 700; font-size: 14px; color: var(--green);
+    }
     .va-tile summary::-webkit-details-marker { display: none; }
-    .va-badges { display: flex; gap: 6px; flex-shrink: 0; }
+    .va-tile summary .reg-id { font: inherit; color: inherit; }
+    .va-tile-body { padding: 0 4px 16px; }
+    .va-badges { display: flex; gap: 6px; flex-shrink: 0; margin-bottom: 4px; }
     .va-badge {
       width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
@@ -1359,11 +1367,15 @@
 <div id="page-video-analysis" class="page">
   <div class="card">
     <div class="card-title">Video Analysis</div>
-    <label for="va-search">Search</label>
-    <input type="text" id="va-search" placeholder="Search by Trial ID, Snake ID, Boot ID..." oninput="renderVideoAnalysisList()">
-    <div class="reg-list-count" id="va-list-count"></div>
+    <div class="cal-header">
+      <button class="cal-nav-btn" onclick="changeVaMonth(-1)">&#8249;</button>
+      <div class="cal-title" id="va-cal-title"></div>
+      <button class="cal-nav-btn" onclick="changeVaMonth(1)">&#8250;</button>
+    </div>
+    <div class="cal-grid" id="va-cal-dow-row"></div>
+    <div class="cal-grid" id="va-cal-grid"></div>
   </div>
-  <div id="va-list-items"></div>
+  <div id="va-day-trials"></div>
 
   <div class="card">
     <div class="card-title">Video Analysis Summary</div>
@@ -1966,6 +1978,10 @@ function applyTrialsCache_(trials) {
     renderResultsTrialsTable();
     renderResultsAnalytics();
   }
+  if (document.getElementById('page-video-analysis').classList.contains('active')) {
+    renderVideoAnalysisList();
+    renderVideoAnalysisSummary();
+  }
 }
 
 function loadTrialLog() {
@@ -2062,6 +2078,11 @@ function vaVideoBlockHtml_(idx, n, vd) {
   '</div>';
 }
 
+// Collapsed = just the Trial ID; tapping it is what reveals the 1-2-3-4
+// video badges and the actual review fields. With dozens of trials, showing
+// every field for every trial at once was too much — picking a date first
+// (below) narrows it to a handful, and the ID alone is enough to recognize
+// which one to open.
 function vaTileHtml_(idx, t) {
   var va = videoAnalysisFor_(t.trialId);
   var videos = (va && va.videos) || [emptyVaVideo_(), emptyVaVideo_(), emptyVaVideo_(), emptyVaVideo_()];
@@ -2069,43 +2090,106 @@ function vaTileHtml_(idx, t) {
     return '<span class="va-badge' + (videos[n - 1] && videos[n - 1].reviewed ? ' done' : '') + '">' + n + '</span>';
   }).join('');
   var blocksHtml = [1, 2, 3, 4].map(function(n) { return vaVideoBlockHtml_(idx, n, videos[n - 1]); }).join('');
-  return '<details class="card va-tile">' +
-    '<summary>' +
-      '<div class="reg-main">' +
-        '<div class="reg-id">' + escapeHtml_(t.trialId) + '</div>' +
-        '<div class="reg-sub">' + escapeHtml_(t.date) + ' &middot; ' + escapeHtml_(t.snakeId) + ' vs ' + escapeHtml_(t.bootId) + '</div>' +
-      '</div>' +
+  return '<details class="va-tile">' +
+    '<summary><div class="reg-id">' + escapeHtml_(t.trialId) + '</div></summary>' +
+    '<div class="va-tile-body">' +
       '<div class="va-badges">' + badgesHtml + '</div>' +
-    '</summary>' +
-    '<div>' + blocksHtml +
+      blocksHtml +
       '<button type="button" class="btn btn-primary" style="width:100%; margin-top:14px;" onclick="saveVideoTile(' + idx + ')">Save Review</button>' +
     '</div>' +
   '</details>';
 }
 
-function renderVideoAnalysisList() {
-  var searchEl = document.getElementById('va-search');
-  var listEl = document.getElementById('va-list-items');
-  var countEl = document.getElementById('va-list-count');
-  if (!listEl) return;
-  var q = (searchEl.value || '').trim().toLowerCase();
-  var items = allTrialsCache.filter(function(t) {
-    if (!q) return true;
-    return [t.trialId, t.snakeId, t.bootId].join(' ').toLowerCase().indexOf(q) !== -1;
-  }).sort(function(a, b) {
-    return (b.date || '').localeCompare(a.date || '') || (b.trialId || '').localeCompare(a.trialId || '');
+// ----- Calendar-driven navigation: pick a date, then a trial from that
+// day, then its 4 videos — mirrors the Trial page's own calendar (same
+// trialsByDate map, since a video only needs reviewing once its trial
+// exists) but with its own view/selection state so picking a date here
+// doesn't affect the Trial page's calendar and vice versa. -----
+var vaCalViewDate = new Date();
+var vaCalSelectedDate = null;
+
+function changeVaMonth(delta) {
+  vaCalViewDate.setMonth(vaCalViewDate.getMonth() + delta);
+  renderVideoAnalysisList();
+}
+
+function renderVaCalendar_() {
+  var year = vaCalViewDate.getFullYear();
+  var month = vaCalViewDate.getMonth();
+  var monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  document.getElementById('va-cal-title').textContent = monthNames[month] + ' ' + year;
+
+  var dowRow = document.getElementById('va-cal-dow-row');
+  dowRow.innerHTML = '';
+  ['S','M','T','W','T','F','S'].forEach(function(d) {
+    var el = document.createElement('div');
+    el.className = 'cal-dow';
+    el.textContent = d;
+    dowRow.appendChild(el);
   });
-  var fullyReviewed = allTrialsCache.filter(function(t) {
-    var va = videoAnalysisFor_(t.trialId);
-    return va && va.videos.length === 4 && va.videos.every(function(v) { return v.reviewed; });
-  }).length;
-  countEl.textContent = items.length + ' of ' + allTrialsCache.length + ' trials shown — ' + fullyReviewed + ' fully reviewed (all 4 videos)';
+
+  var grid = document.getElementById('va-cal-grid');
+  grid.innerHTML = '';
+
+  var firstDay = new Date(year, month, 1).getDay();
+  var daysInMonth = new Date(year, month + 1, 0).getDate();
+  var todayStr = new Date().toISOString().split('T')[0];
+
+  for (var i = 0; i < firstDay; i++) {
+    var empty = document.createElement('div');
+    empty.className = 'cal-day empty';
+    grid.appendChild(empty);
+  }
+
+  for (var day = 1; day <= daysInMonth; day++) {
+    var dateStr = year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    var cell = document.createElement('div');
+    cell.className = 'cal-day';
+    if (dateStr === todayStr) cell.classList.add('today');
+    if (trialsByDate[dateStr]) cell.classList.add('has-trials');
+    if (dateStr === vaCalSelectedDate) cell.classList.add('selected');
+
+    var numSpan = document.createElement('div');
+    numSpan.textContent = day;
+    cell.appendChild(numSpan);
+
+    if (trialsByDate[dateStr]) {
+      var dot = document.createElement('div');
+      dot.className = 'dot';
+      cell.appendChild(dot);
+    }
+
+    cell.addEventListener('click', function(ds) {
+      return function() { selectVaCalDate(ds); };
+    }(dateStr));
+
+    grid.appendChild(cell);
+  }
+}
+
+function selectVaCalDate(dateStr) {
+  vaCalSelectedDate = (vaCalSelectedDate === dateStr) ? null : dateStr;
+  renderVideoAnalysisList();
+}
+
+function renderVideoAnalysisList() {
+  if (!document.getElementById('va-cal-title')) return;
+  renderVaCalendar_();
+
+  var container = document.getElementById('va-day-trials');
+  if (!vaCalSelectedDate) { container.innerHTML = ''; return; }
+
+  var items = (trialsByDate[vaCalSelectedDate] || []).slice().sort(function(a, b) {
+    return (a.trialId || '').localeCompare(b.trialId || '');
+  });
   vaVisibleTrials_ = items;
   if (items.length === 0) {
-    listEl.innerHTML = '<div class="card"><div class="empty-state">No trials found.</div></div>';
+    container.innerHTML = '<div class="card"><div class="empty-state">No trials recorded on ' + vaCalSelectedDate + '.</div></div>';
     return;
   }
-  listEl.innerHTML = items.map(function(t, idx) { return vaTileHtml_(idx, t); }).join('');
+  container.innerHTML = '<div class="card"><div class="card-title">Trials on ' + vaCalSelectedDate + '</div>' +
+    items.map(function(t, idx) { return vaTileHtml_(idx, t); }).join('') +
+  '</div>';
 }
 
 function saveVideoTile(idx) {
