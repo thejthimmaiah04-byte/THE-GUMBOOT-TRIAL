@@ -2090,9 +2090,15 @@ function emptyVideoAnalysis_(trialId) {
 // "have I watched this one" checklist, kept separate from this data.
 // idPrefix keys the field ids — always 'va-review-' in practice, since the
 // review page only ever shows one trial's fields in the DOM at a time.
+// Which part of the SNAKE's body was involved in the strike that led to
+// the bite — a distinct taxonomy from the boot's own Region Struck
+// (Toe/Lateral/Instep/etc.) used on the Trial form, so it isn't reused
+// here.
+var VA_TRIGGER_REGIONS_ = ['Head', 'Neck', 'Mid Body', 'Tail'];
+
 function vaDataFieldsHtml_(idPrefix, va) {
-  var regionOptions = '<option value="">-- region --</option>' + Object.keys(REGION_LABELS).map(function(code) {
-    return '<option value="' + code + '"' + (va.triggerRegion === code ? ' selected' : '') + '>' + escapeHtml_(REGION_LABELS[code]) + '</option>';
+  var regionOptions = '<option value="">-- region --</option>' + VA_TRIGGER_REGIONS_.map(function(r) {
+    return '<option value="' + r + '"' + (va.triggerRegion === r ? ' selected' : '') + '>' + escapeHtml_(r) + '</option>';
   }).join('');
   return '<div class="row">' +
       '<div><label for="' + idPrefix + 'strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'strikes" value="' + escapeHtml_(String(va.strikes || '')) + '"></div>' +
