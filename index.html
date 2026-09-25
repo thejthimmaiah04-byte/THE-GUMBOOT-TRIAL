@@ -334,7 +334,16 @@
        instead of its own label, so all 4 invisible hit-areas can end up
        stacked on top of each other at one spot instead of each covering
        its own numbered circle, making taps land on the wrong badge. */
-    .va-badge-check { position: relative; cursor: pointer; flex-shrink: 0; }
+    /* Overrides the generic "label { display:block; margin-top:12px;
+       margin-bottom:4px; ... }" rule elsewhere in this file — these badge
+       checkboxes are themselves <label> elements, so without this reset
+       they silently inherit that spacing. Only the first badge is exempt
+       via that rule's own :first-child carve-out, so badges 2-4 were
+       sitting 12px lower than badge 1 instead of level with it. */
+    .va-badge-check {
+      position: relative; cursor: pointer; flex-shrink: 0;
+      display: inline-block; margin: 0; padding: 0; font: inherit; color: inherit;
+    }
     .va-badge-check input { position: absolute; inset: 0; opacity: 0; width: 24px; height: 24px; margin: 0; cursor: pointer; }
 
     /* --- Results: trials table --- */
