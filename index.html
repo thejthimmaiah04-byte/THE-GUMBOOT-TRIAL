@@ -345,6 +345,14 @@
       display: inline-block; margin: 0; padding: 0; font: inherit; color: inherit;
     }
     .va-badge-check input { position: absolute; inset: 0; opacity: 0; width: 24px; height: 24px; margin: 0; cursor: pointer; }
+    .va-row { position: relative; }
+    .va-complete-dot {
+      /* A literal green, not var(--green) (which is this app's dark navy
+         brand color, not a visually green one) — this dot specifically
+         needs to read as green at a glance. */
+      position: absolute; top: 6px; right: 4px; width: 9px; height: 9px;
+      border-radius: 50%; background: #2e7d32;
+    }
 
     /* --- Results: trials table --- */
     .results-table-wrap { overflow-x: auto; }
@@ -2272,7 +2280,12 @@ function renderVideoAnalysisList() {
   }
   container.innerHTML = '<div class="card"><div class="card-title">Trials on ' + vaCalSelectedDate + '</div>' +
     items.map(function(t, idx) {
-      return '<div class="reg-list-item" onclick="openVideoReview(' + idx + ')"><div class="reg-id">' + escapeHtml_(t.trialId) + '</div></div>';
+      var va = videoAnalysisFor_(t.trialId);
+      var complete = va && va.reviewed.length === 4 && va.reviewed.every(Boolean);
+      return '<div class="reg-list-item va-row" onclick="openVideoReview(' + idx + ')">' +
+        (complete ? '<span class="va-complete-dot" title="All 4 videos reviewed"></span>' : '') +
+        '<div class="reg-id">' + escapeHtml_(t.trialId) + '</div>' +
+      '</div>';
     }).join('') +
   '</div>';
 }
