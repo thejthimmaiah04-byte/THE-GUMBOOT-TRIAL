@@ -335,9 +335,8 @@
       border: 1.5px solid var(--border);
     }
     .va-badge.done { background: var(--green); color: #fff; border-color: var(--green); }
-    .va-video-block { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
-    .va-video-block:first-of-type { margin-top: 12px; }
-    .va-video-block .chk-item { background: none; padding: 4px 0 8px; }
+    .va-badge-check { cursor: pointer; }
+    .va-badge-check input { position: absolute; opacity: 0; width: 24px; height: 24px; cursor: pointer; }
 
     /* --- Results: trials table --- */
     .results-table-wrap { overflow-x: auto; }
@@ -2055,46 +2054,49 @@ function videoAnalysisFor_(trialId) {
   return videoAnalysisCache.find(function(v) { return v.trialId === trialId; }) || null;
 }
 
-function emptyVaVideo_() {
-  return { reviewed: false, strikes: '', bites: '', stepsUntilBite: '', triggerRegion: '' };
+function emptyVideoAnalysis_(trialId) {
+  return { trialId: trialId, reviewed: [false, false, false, false], strikes: '', bites: '', stepsUntilBite: '', triggerRegion: '' };
 }
 
-function vaVideoBlockHtml_(idx, n, vd) {
-  vd = vd || emptyVaVideo_();
-  var fid = 'va-' + idx + '-v' + n + '-';
+// One set of fields per trial, not per video — all 4 videos are watched
+// together and scored once, after watching. The 1-2-3-4 badges (built in
+// vaTileHtml_ below) are only a "have I watched this one" checklist, kept
+// separate from this data.
+function vaDataFieldsHtml_(idx, va) {
   var regionOptions = '<option value="">-- region --</option>' + Object.keys(REGION_LABELS).map(function(code) {
-    return '<option value="' + code + '"' + (vd.triggerRegion === code ? ' selected' : '') + '>' + escapeHtml_(REGION_LABELS[code]) + '</option>';
+    return '<option value="' + code + '"' + (va.triggerRegion === code ? ' selected' : '') + '>' + escapeHtml_(REGION_LABELS[code]) + '</option>';
   }).join('');
-  return '<div class="va-video-block">' +
-    '<label class="chk-item"><input type="checkbox" id="' + fid + 'reviewed"' + (vd.reviewed ? ' checked' : '') + '><span>Video ' + n + ' reviewed</span></label>' +
-    '<div class="row">' +
-      '<div><label for="' + fid + 'strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="' + fid + 'strikes" value="' + escapeHtml_(String(vd.strikes || '')) + '"></div>' +
-      '<div><label for="' + fid + 'bites">Number of Bites</label><input type="number" min="0" inputmode="numeric" id="' + fid + 'bites" value="' + escapeHtml_(String(vd.bites || '')) + '"></div>' +
+  return '<div class="row">' +
+      '<div><label for="va-' + idx + '-strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="va-' + idx + '-strikes" value="' + escapeHtml_(String(va.strikes || '')) + '"></div>' +
+      '<div><label for="va-' + idx + '-bites">Number of Bites</label><input type="number" min="0" inputmode="numeric" id="va-' + idx + '-bites" value="' + escapeHtml_(String(va.bites || '')) + '"></div>' +
     '</div>' +
     '<div class="row">' +
-      '<div><label for="' + fid + 'steps">Steps Until Bite</label><input type="number" min="0" inputmode="numeric" id="' + fid + 'steps" value="' + escapeHtml_(String(vd.stepsUntilBite || '')) + '"></div>' +
-      '<div><label for="' + fid + 'region">Region That Triggered Bite</label><select id="' + fid + 'region">' + regionOptions + '</select></div>' +
-    '</div>' +
-  '</div>';
+      '<div><label for="va-' + idx + '-steps">Steps Until Bite</label><input type="number" min="0" inputmode="numeric" id="va-' + idx + '-steps" value="' + escapeHtml_(String(va.stepsUntilBite || '')) + '"></div>' +
+      '<div><label for="va-' + idx + '-region">Region That Triggered Bite</label><select id="va-' + idx + '-region">' + regionOptions + '</select></div>' +
+    '</div>';
 }
 
 // Collapsed = just the Trial ID; tapping it is what reveals the 1-2-3-4
-// video badges and the actual review fields. With dozens of trials, showing
+// watched-checklist and the data fields. With dozens of trials, showing
 // every field for every trial at once was too much — picking a date first
 // (below) narrows it to a handful, and the ID alone is enough to recognize
 // which one to open.
 function vaTileHtml_(idx, t) {
-  var va = videoAnalysisFor_(t.trialId);
-  var videos = (va && va.videos) || [emptyVaVideo_(), emptyVaVideo_(), emptyVaVideo_(), emptyVaVideo_()];
+  var va = videoAnalysisFor_(t.trialId) || emptyVideoAnalysis_(t.trialId);
   var badgesHtml = [1, 2, 3, 4].map(function(n) {
-    return '<span class="va-badge' + (videos[n - 1] && videos[n - 1].reviewed ? ' done' : '') + '">' + n + '</span>';
+    var checked = !!va.reviewed[n - 1];
+    return '<label class="va-badge-check">' +
+      '<input type="checkbox" id="va-' + idx + '-r' + n + '"' + (checked ? ' checked' : '') +
+        ' onchange="this.nextElementSibling.classList.toggle(\'done\', this.checked)">' +
+      '<span class="va-badge' + (checked ? ' done' : '') + '">' + n + '</span>' +
+    '</label>';
   }).join('');
-  var blocksHtml = [1, 2, 3, 4].map(function(n) { return vaVideoBlockHtml_(idx, n, videos[n - 1]); }).join('');
   return '<details class="va-tile">' +
     '<summary><div class="reg-id">' + escapeHtml_(t.trialId) + '</div></summary>' +
     '<div class="va-tile-body">' +
+      '<label>Videos Watched</label>' +
       '<div class="va-badges">' + badgesHtml + '</div>' +
-      blocksHtml +
+      vaDataFieldsHtml_(idx, va) +
       '<button type="button" class="btn btn-primary" style="width:100%; margin-top:14px;" onclick="saveVideoTile(' + idx + ')">Save Review</button>' +
     '</div>' +
   '</details>';
@@ -2195,17 +2197,16 @@ function renderVideoAnalysisList() {
 function saveVideoTile(idx) {
   var t = vaVisibleTrials_[idx];
   if (!t) return;
-  var videos = [1, 2, 3, 4].map(function(n) {
-    var fid = 'va-' + idx + '-v' + n + '-';
-    return {
-      reviewed: document.getElementById(fid + 'reviewed').checked,
-      strikes: document.getElementById(fid + 'strikes').value.trim(),
-      bites: document.getElementById(fid + 'bites').value.trim(),
-      stepsUntilBite: document.getElementById(fid + 'steps').value.trim(),
-      triggerRegion: document.getElementById(fid + 'region').value
-    };
-  });
-  var payload = { trialId: t.trialId, videos: videos, reviewedBy: getRecorderName() };
+  var reviewed = [1, 2, 3, 4].map(function(n) { return document.getElementById('va-' + idx + '-r' + n).checked; });
+  var payload = {
+    trialId: t.trialId,
+    reviewed: reviewed,
+    strikes: document.getElementById('va-' + idx + '-strikes').value.trim(),
+    bites: document.getElementById('va-' + idx + '-bites').value.trim(),
+    stepsUntilBite: document.getElementById('va-' + idx + '-steps').value.trim(),
+    triggerRegion: document.getElementById('va-' + idx + '-region').value,
+    reviewedBy: getRecorderName()
+  };
   apiPost('saveVideoAnalysis', payload).then(function(result) {
     return { success: result.success, message: result.message };
   }).catch(function() {
@@ -2216,7 +2217,11 @@ function saveVideoTile(idx) {
   }).then(function(result) {
     showToast(result.message, result.success ? 'success' : 'error');
     if (result.success) {
-      var record = { trialId: t.trialId, videos: videos, reviewedBy: payload.reviewedBy, lastEditedDate: '' };
+      var record = {
+        trialId: t.trialId, reviewed: reviewed, strikes: payload.strikes, bites: payload.bites,
+        stepsUntilBite: payload.stepsUntilBite, triggerRegion: payload.triggerRegion,
+        reviewedBy: payload.reviewedBy, lastEditedDate: ''
+      };
       var existingIdx = videoAnalysisCache.findIndex(function(v) { return v.trialId === t.trialId; });
       if (existingIdx === -1) videoAnalysisCache.push(record); else videoAnalysisCache[existingIdx] = record;
       renderVideoAnalysisList();
@@ -2225,30 +2230,30 @@ function saveVideoTile(idx) {
   });
 }
 
-// Summary: only videos actually marked "reviewed" count toward the
-// numbers below — an in-progress, unsaved/unreviewed video slot with a
-// stray number in it shouldn't skew averages meant to represent finished
-// review work.
+// Summary: two separate things on purpose — watch progress (how many of
+// the 4-video checklists are done) and the actual scored data (strikes/
+// bites/steps/region), which only exists once per trial and only counts
+// toward the averages once something's actually been entered.
 function renderVideoAnalysisSummary() {
   var el = document.getElementById('va-summary-body');
   if (!el) return;
-  var reviewed = [];
-  videoAnalysisCache.forEach(function(va) {
-    (va.videos || []).forEach(function(v) {
-      if (v.reviewed) reviewed.push(v);
-    });
-  });
   var totalTrials = allTrialsCache.length;
   var fullyReviewedTrials = allTrialsCache.filter(function(t) {
     var va = videoAnalysisFor_(t.trialId);
-    return va && va.videos.length === 4 && va.videos.every(function(v) { return v.reviewed; });
+    return va && va.reviewed.length === 4 && va.reviewed.every(Boolean);
   }).length;
-  if (reviewed.length === 0) {
-    el.innerHTML = '<div class="empty-state">No videos marked reviewed yet — summary will appear once some are.</div>';
+  var reviewedVideoCount = videoAnalysisCache.reduce(function(sum, va) {
+    return sum + (va.reviewed || []).filter(Boolean).length;
+  }, 0);
+  var withData = videoAnalysisCache.filter(function(va) {
+    return va.strikes !== '' || va.bites !== '' || va.stepsUntilBite !== '' || va.triggerRegion;
+  });
+  if (withData.length === 0) {
+    el.innerHTML = '<div class="empty-state">No data entered yet — summary will appear once trials are scored.</div>';
     return;
   }
   function numsOf_(key) {
-    return reviewed.map(function(v) { return parseFloat(v[key]); }).filter(function(n) { return !isNaN(n); });
+    return withData.map(function(va) { return parseFloat(va[key]); }).filter(function(n) { return !isNaN(n); });
   }
   function avg_(arr) { return arr.length ? Math.round((arr.reduce(function(a, b) { return a + b; }, 0) / arr.length) * 10) / 10 : null; }
   var avgStrikes = avg_(numsOf_('strikes'));
@@ -2257,10 +2262,10 @@ function renderVideoAnalysisSummary() {
 
   var statsHtml = '<div class="stat-row">' +
     '<div class="stat-tile"><div class="stat-value">' + fullyReviewedTrials + ' / ' + totalTrials + '</div><div class="stat-label">Trials Fully Reviewed</div></div>' +
-    '<div class="stat-tile"><div class="stat-value">' + reviewed.length + '</div><div class="stat-label">Videos Reviewed</div></div>' +
-    '<div class="stat-tile"><div class="stat-value">' + (avgStrikes === null ? '—' : avgStrikes) + '</div><div class="stat-label">Avg Strikes / Video</div></div>' +
-    '<div class="stat-tile"><div class="stat-value">' + (avgBites === null ? '—' : avgBites) + '</div><div class="stat-label">Avg Bites / Video</div></div>' +
-    '</div><div class="stat-caption">Based on the ' + reviewed.length + ' video' + (reviewed.length === 1 ? '' : 's') + ' ticked "reviewed" so far, out of ' + (totalTrials * 4) + ' total across all trials.</div>';
+    '<div class="stat-tile"><div class="stat-value">' + reviewedVideoCount + ' / ' + (totalTrials * 4) + '</div><div class="stat-label">Videos Watched</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + (avgStrikes === null ? '—' : avgStrikes) + '</div><div class="stat-label">Avg Strikes / Trial</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + (avgBites === null ? '—' : avgBites) + '</div><div class="stat-label">Avg Bites / Trial</div></div>' +
+    '</div><div class="stat-caption">Data rates are based on the ' + withData.length + ' trial' + (withData.length === 1 ? '' : 's') + ' scored so far, out of ' + totalTrials + ' total trials.</div>';
 
   var stepsHtml = '<div class="stat-row" style="margin-top:12px;">' +
     '<div class="stat-tile"><div class="stat-value">' + (avgSteps === null ? '—' : avgSteps) + '</div><div class="stat-label">Avg Steps Until Bite</div></div>' +
@@ -2268,15 +2273,15 @@ function renderVideoAnalysisSummary() {
 
   // ----- Region that triggered the bite, by count -----
   var regionGroups = {};
-  reviewed.forEach(function(v) {
-    if (!v.triggerRegion) return;
-    if (!regionGroups[v.triggerRegion]) regionGroups[v.triggerRegion] = { key: v.triggerRegion, label: REGION_NAMES[v.triggerRegion] || v.triggerRegion, total: 0 };
-    regionGroups[v.triggerRegion].total++;
+  withData.forEach(function(va) {
+    if (!va.triggerRegion) return;
+    if (!regionGroups[va.triggerRegion]) regionGroups[va.triggerRegion] = { key: va.triggerRegion, label: REGION_NAMES[va.triggerRegion] || va.triggerRegion, total: 0 };
+    regionGroups[va.triggerRegion].total++;
   });
   var regionRows = Object.keys(regionGroups).map(function(k) { return regionGroups[k]; })
     .sort(function(a, b) { return b.total - a.total; });
   var regionChartHtml = '<div style="margin-top:16px;"><div class="card-title" style="border:none; padding:0; margin-bottom:8px;">Region That Triggered the Bite</div>' +
-    buildCountBarChartHtml_(regionRows, 'No triggering region recorded yet.', 'var(--danger)', function(n) { return ' bite' + (n === 1 ? '' : 's'); }) +
+    buildCountBarChartHtml_(regionRows, 'No triggering region recorded yet.', 'var(--danger)', function(n) { return ' trial' + (n === 1 ? '' : 's'); }) +
     '</div>';
 
   el.innerHTML = statsHtml + stepsHtml + regionChartHtml;

@@ -119,17 +119,15 @@ var BOOT_HEADERS = [
   'Sole_Color','Rubber_Color','Pair_Number','Side'
 ];
 
-// One row per Trial_ID (wide format — Video1_*/Video2_*/Video3_*/Video4_*
-// side by side) rather than one row per video, so a reviewer's progress
-// on a trial's 4 videos lives together and can be saved/updated as a
-// single upsert, matching how the review UI works (one tile per trial,
-// four video slots inside it, ticked off incrementally over time).
+// One row per Trial_ID. The 4 videos for a trial are watched together and
+// scored once (not once per video) — Video1_Reviewed..Video4_Reviewed are
+// purely a per-video "I've watched this one" checklist to make sure all 4
+// actually got watched before the single set of data fields is treated as
+// final; they don't carry their own data.
 var VIDEO_HEADERS = [
   'Trial_ID',
-  'Video1_Reviewed', 'Video1_Strikes', 'Video1_Bites', 'Video1_StepsUntilBite', 'Video1_TriggerRegion',
-  'Video2_Reviewed', 'Video2_Strikes', 'Video2_Bites', 'Video2_StepsUntilBite', 'Video2_TriggerRegion',
-  'Video3_Reviewed', 'Video3_Strikes', 'Video3_Bites', 'Video3_StepsUntilBite', 'Video3_TriggerRegion',
-  'Video4_Reviewed', 'Video4_Strikes', 'Video4_Bites', 'Video4_StepsUntilBite', 'Video4_TriggerRegion',
+  'Video1_Reviewed', 'Video2_Reviewed', 'Video3_Reviewed', 'Video4_Reviewed',
+  'Strikes', 'Bites', 'StepsUntilBite', 'TriggerRegion',
   'Reviewed_By', 'Last_Edited_Date'
 ];
 
@@ -315,21 +313,16 @@ function getControlTrials() {
 }
 
 // ---------- Video Analysis ----------
-// One row per Trial_ID in a "VIDEO ANALYSIS" sheet, holding review data
-// for that trial's 4 videos (strikes, bites, steps until bite, and the
-// region of the strike that triggered the bite, per video) plus a
-// reviewed flag per video.
+// One row per Trial_ID in a "VIDEO ANALYSIS" sheet. Video1_Reviewed..
+// Video4_Reviewed are a per-video watched checklist only; Strikes/Bites/
+// StepsUntilBite/TriggerRegion are entered once per trial, after all 4
+// videos have been watched together.
 function videoRowToObject_(r) {
-  function video(base) {
-    return {
-      reviewed: !!r[base], strikes: r[base + 1], bites: r[base + 2],
-      stepsUntilBite: r[base + 3], triggerRegion: r[base + 4]
-    };
-  }
   return {
     trialId: r[0],
-    videos: [video(1), video(6), video(11), video(16)],
-    reviewedBy: r[21], lastEditedDate: r[22]
+    reviewed: [!!r[1], !!r[2], !!r[3], !!r[4]],
+    strikes: r[5], bites: r[6], stepsUntilBite: r[7], triggerRegion: r[8],
+    reviewedBy: r[9], lastEditedDate: r[10]
   };
 }
 
@@ -369,12 +362,10 @@ function saveVideoAnalysis(data) {
       if (values[i][0] === data.trialId) { rowIdx = i; break; }
     }
 
-    var videos = data.videos || [];
+    var reviewed = data.reviewed || [];
     var row = [data.trialId];
-    for (var v = 0; v < 4; v++) {
-      var vd = videos[v] || {};
-      row.push(!!vd.reviewed, vd.strikes || '', vd.bites || '', vd.stepsUntilBite || '', vd.triggerRegion || '');
-    }
+    for (var v = 0; v < 4; v++) row.push(!!reviewed[v]);
+    row.push(data.strikes || '', data.bites || '', data.stepsUntilBite || '', data.triggerRegion || '');
     row.push(sanitizeCell_(data.reviewedBy || ''), todayDateStr_());
 
     if (rowIdx === -1) {
