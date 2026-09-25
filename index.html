@@ -317,16 +317,10 @@
     }
 
     /* --- Video Analysis --- */
-    .va-tile { border-bottom: 1px solid var(--border); }
-    .va-tile:last-child { border-bottom: none; }
-    .va-tile summary {
-      cursor: pointer; list-style: none; padding: 13px 4px; min-height: 44px;
-      display: flex; align-items: center;
-      font-family: 'Courier New', monospace; font-weight: 700; font-size: 14px; color: var(--green);
+    .va-back-btn {
+      background: none; border: none; color: var(--green); font-weight: 700;
+      font-size: 14px; padding: 0; margin-bottom: 12px; cursor: pointer; min-height: 32px;
     }
-    .va-tile summary::-webkit-details-marker { display: none; }
-    .va-tile summary .reg-id { font: inherit; color: inherit; }
-    .va-tile-body { padding: 0 4px 16px; }
     .va-badges { display: flex; gap: 6px; flex-shrink: 0; margin-bottom: 4px; }
     .va-badge {
       width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
@@ -1382,6 +1376,23 @@
   </div>
 </div>
 
+<!-- ==================== PAGE: VIDEO REVIEW (single trial) ==================== -->
+<!-- Its own full page rather than an inline expandable tile — with many
+     trials in a day's list, more than one accordion tile could end up
+     open at once, making it easy to fill in fields under the wrong
+     trial by mistake. Only one trial's fields exist in the DOM at a
+     time here, so that mistake isn't possible. -->
+<div id="page-video-review" class="page">
+  <div class="card">
+    <button type="button" class="va-back-btn" onclick="switchPage('video-analysis')">&#8249; Back to trials</button>
+    <div class="card-title" id="va-review-trial-id"></div>
+    <label>Videos Watched</label>
+    <div class="va-badges" id="va-review-badges"></div>
+    <div id="va-review-fields"></div>
+    <button type="button" class="btn btn-primary" style="width:100%; margin-top:14px;" onclick="saveVideoReview()">Save Review</button>
+  </div>
+</div>
+
 <!-- ==================== BOTTOM NAV ==================== -->
 <!-- ==================== LOADING OVERLAY ==================== -->
 <div id="loading">
@@ -1829,12 +1840,14 @@ function renderPage(name) {
   document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
   document.getElementById('page-' + name).classList.add('active');
   var titles = { home: 'Home', checklist: 'Checklist', trial: 'Trial Log & Record', boot: 'Register Boot', snake: 'Register Snake',
-    'boot-list': 'Registered Boots', 'snake-list': 'Registered Snakes', results: 'Results', 'video-analysis': 'Video Analysis' };
+    'boot-list': 'Registered Boots', 'snake-list': 'Registered Snakes', results: 'Results', 'video-analysis': 'Video Analysis',
+    'video-review': 'Video Analysis' };
   document.getElementById('header-sub').textContent = titles[name] || '';
   if (name === 'boot-list') renderBootList();
   if (name === 'snake-list') renderSnakeList();
   if (name === 'results') { renderResultsTrialsTable(); renderControlTrialsTable(); renderResultsAnalytics(); }
   if (name === 'video-analysis') { renderVideoAnalysisList(); renderVideoAnalysisSummary(); }
+  if (name === 'video-review') renderVideoReview();
   window.scrollTo(0, 0);
 }
 
@@ -2059,47 +2072,92 @@ function emptyVideoAnalysis_(trialId) {
 }
 
 // One set of fields per trial, not per video — all 4 videos are watched
-// together and scored once, after watching. The 1-2-3-4 badges (built in
-// vaTileHtml_ below) are only a "have I watched this one" checklist, kept
-// separate from this data.
-function vaDataFieldsHtml_(idx, va) {
+// together and scored once, after watching. The 1-2-3-4 badges are only a
+// "have I watched this one" checklist, kept separate from this data.
+// idPrefix keys the field ids — always 'va-review-' in practice, since the
+// review page only ever shows one trial's fields in the DOM at a time.
+function vaDataFieldsHtml_(idPrefix, va) {
   var regionOptions = '<option value="">-- region --</option>' + Object.keys(REGION_LABELS).map(function(code) {
     return '<option value="' + code + '"' + (va.triggerRegion === code ? ' selected' : '') + '>' + escapeHtml_(REGION_LABELS[code]) + '</option>';
   }).join('');
   return '<div class="row">' +
-      '<div><label for="va-' + idx + '-strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="va-' + idx + '-strikes" value="' + escapeHtml_(String(va.strikes || '')) + '"></div>' +
-      '<div><label for="va-' + idx + '-bites">Number of Bites</label><input type="number" min="0" inputmode="numeric" id="va-' + idx + '-bites" value="' + escapeHtml_(String(va.bites || '')) + '"></div>' +
+      '<div><label for="' + idPrefix + 'strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'strikes" value="' + escapeHtml_(String(va.strikes || '')) + '"></div>' +
+      '<div><label for="' + idPrefix + 'bites">Number of Bites</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'bites" value="' + escapeHtml_(String(va.bites || '')) + '"></div>' +
     '</div>' +
     '<div class="row">' +
-      '<div><label for="va-' + idx + '-steps">Steps Until Bite</label><input type="number" min="0" inputmode="numeric" id="va-' + idx + '-steps" value="' + escapeHtml_(String(va.stepsUntilBite || '')) + '"></div>' +
-      '<div><label for="va-' + idx + '-region">Region That Triggered Bite</label><select id="va-' + idx + '-region">' + regionOptions + '</select></div>' +
+      '<div><label for="' + idPrefix + 'steps">Steps Until Bite</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'steps" value="' + escapeHtml_(String(va.stepsUntilBite || '')) + '"></div>' +
+      '<div><label for="' + idPrefix + 'region">Region That Triggered Bite</label><select id="' + idPrefix + 'region">' + regionOptions + '</select></div>' +
     '</div>';
 }
 
-// Collapsed = just the Trial ID; tapping it is what reveals the 1-2-3-4
-// watched-checklist and the data fields. With dozens of trials, showing
-// every field for every trial at once was too much — picking a date first
-// (below) narrows it to a handful, and the ID alone is enough to recognize
-// which one to open.
-function vaTileHtml_(idx, t) {
-  var va = videoAnalysisFor_(t.trialId) || emptyVideoAnalysis_(t.trialId);
-  var badgesHtml = [1, 2, 3, 4].map(function(n) {
+function vaBadgesHtml_(idPrefix, va) {
+  return [1, 2, 3, 4].map(function(n) {
     var checked = !!va.reviewed[n - 1];
     return '<label class="va-badge-check">' +
-      '<input type="checkbox" id="va-' + idx + '-r' + n + '"' + (checked ? ' checked' : '') +
+      '<input type="checkbox" id="' + idPrefix + 'r' + n + '"' + (checked ? ' checked' : '') +
         ' onchange="this.nextElementSibling.classList.toggle(\'done\', this.checked)">' +
       '<span class="va-badge' + (checked ? ' done' : '') + '">' + n + '</span>' +
     '</label>';
   }).join('');
-  return '<details class="va-tile">' +
-    '<summary><div class="reg-id">' + escapeHtml_(t.trialId) + '</div></summary>' +
-    '<div class="va-tile-body">' +
-      '<label>Videos Watched</label>' +
-      '<div class="va-badges">' + badgesHtml + '</div>' +
-      vaDataFieldsHtml_(idx, va) +
-      '<button type="button" class="btn btn-primary" style="width:100%; margin-top:14px;" onclick="saveVideoTile(' + idx + ')">Save Review</button>' +
-    '</div>' +
-  '</details>';
+}
+
+// Tapping a trial row opens its own full page (page-video-review) rather
+// than expanding it in place — with several trials listed for a day, more
+// than one expandable tile could end up open at once, making it easy to
+// fill in fields under the wrong trial by mistake. Only one trial's
+// fields ever exist in the DOM at a time this way.
+var vaReviewTrial = null;
+
+function openVideoReview(idx) {
+  var t = vaVisibleTrials_[idx];
+  if (!t) return;
+  vaReviewTrial = t;
+  switchPage('video-review');
+}
+
+function renderVideoReview() {
+  var t = vaReviewTrial;
+  if (!t) { switchPage('video-analysis'); return; }
+  var va = videoAnalysisFor_(t.trialId) || emptyVideoAnalysis_(t.trialId);
+  document.getElementById('header-sub').textContent = t.trialId;
+  document.getElementById('va-review-trial-id').textContent = t.trialId;
+  document.getElementById('va-review-badges').innerHTML = vaBadgesHtml_('va-review-', va);
+  document.getElementById('va-review-fields').innerHTML = vaDataFieldsHtml_('va-review-', va);
+}
+
+function saveVideoReview() {
+  var t = vaReviewTrial;
+  if (!t) return;
+  var reviewed = [1, 2, 3, 4].map(function(n) { return document.getElementById('va-review-r' + n).checked; });
+  var payload = {
+    trialId: t.trialId,
+    reviewed: reviewed,
+    strikes: document.getElementById('va-review-strikes').value.trim(),
+    bites: document.getElementById('va-review-bites').value.trim(),
+    stepsUntilBite: document.getElementById('va-review-steps').value.trim(),
+    triggerRegion: document.getElementById('va-review-region').value,
+    reviewedBy: getRecorderName()
+  };
+  apiPost('saveVideoAnalysis', payload).then(function(result) {
+    return { success: result.success, message: result.message };
+  }).catch(function() {
+    var queued = queueSubmission('saveVideoAnalysis', payload);
+    return queued
+      ? { success: true, message: t.trialId + ': queued offline, will retry automatically' }
+      : { success: false, message: t.trialId + ': could not queue offline (device storage full) — NOT saved' };
+  }).then(function(result) {
+    showToast(result.message, result.success ? 'success' : 'error');
+    if (result.success) {
+      var record = {
+        trialId: t.trialId, reviewed: reviewed, strikes: payload.strikes, bites: payload.bites,
+        stepsUntilBite: payload.stepsUntilBite, triggerRegion: payload.triggerRegion,
+        reviewedBy: payload.reviewedBy, lastEditedDate: ''
+      };
+      var existingIdx = videoAnalysisCache.findIndex(function(v) { return v.trialId === t.trialId; });
+      if (existingIdx === -1) videoAnalysisCache.push(record); else videoAnalysisCache[existingIdx] = record;
+      renderVideoAnalysisSummary();
+    }
+  });
 }
 
 // ----- Calendar-driven navigation: pick a date, then a trial from that
@@ -2190,44 +2248,10 @@ function renderVideoAnalysisList() {
     return;
   }
   container.innerHTML = '<div class="card"><div class="card-title">Trials on ' + vaCalSelectedDate + '</div>' +
-    items.map(function(t, idx) { return vaTileHtml_(idx, t); }).join('') +
+    items.map(function(t, idx) {
+      return '<div class="reg-list-item" onclick="openVideoReview(' + idx + ')"><div class="reg-id">' + escapeHtml_(t.trialId) + '</div></div>';
+    }).join('') +
   '</div>';
-}
-
-function saveVideoTile(idx) {
-  var t = vaVisibleTrials_[idx];
-  if (!t) return;
-  var reviewed = [1, 2, 3, 4].map(function(n) { return document.getElementById('va-' + idx + '-r' + n).checked; });
-  var payload = {
-    trialId: t.trialId,
-    reviewed: reviewed,
-    strikes: document.getElementById('va-' + idx + '-strikes').value.trim(),
-    bites: document.getElementById('va-' + idx + '-bites').value.trim(),
-    stepsUntilBite: document.getElementById('va-' + idx + '-steps').value.trim(),
-    triggerRegion: document.getElementById('va-' + idx + '-region').value,
-    reviewedBy: getRecorderName()
-  };
-  apiPost('saveVideoAnalysis', payload).then(function(result) {
-    return { success: result.success, message: result.message };
-  }).catch(function() {
-    var queued = queueSubmission('saveVideoAnalysis', payload);
-    return queued
-      ? { success: true, message: t.trialId + ': queued offline, will retry automatically' }
-      : { success: false, message: t.trialId + ': could not queue offline (device storage full) — NOT saved' };
-  }).then(function(result) {
-    showToast(result.message, result.success ? 'success' : 'error');
-    if (result.success) {
-      var record = {
-        trialId: t.trialId, reviewed: reviewed, strikes: payload.strikes, bites: payload.bites,
-        stepsUntilBite: payload.stepsUntilBite, triggerRegion: payload.triggerRegion,
-        reviewedBy: payload.reviewedBy, lastEditedDate: ''
-      };
-      var existingIdx = videoAnalysisCache.findIndex(function(v) { return v.trialId === t.trialId; });
-      if (existingIdx === -1) videoAnalysisCache.push(record); else videoAnalysisCache[existingIdx] = record;
-      renderVideoAnalysisList();
-      renderVideoAnalysisSummary();
-    }
-  });
 }
 
 // Summary: two separate things on purpose — watch progress (how many of
