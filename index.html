@@ -2444,21 +2444,42 @@ function renderVideoAnalysisSummary() {
     '<div class="stat-tile"><div class="stat-value">' + withData.filter(function(va) { return va.strikes === 'NIL'; }).length + '</div><div class="stat-label">DNS Trials</div></div>' +
     '</div>';
 
-  // ----- Region that triggered the bite, by count -----
+  var SPECIES_GROUPS_ = [
+    { title: 'Viper', codes: ['DR', 'EC'] },
+    { title: 'Cobra', codes: ['NN'] }
+  ];
+  var speciesHtml = SPECIES_GROUPS_.map(function(g) {
+    var recs = withData.filter(function(va) {
+      var t = allTrialsCache.find(function(x) { return x.trialId === va.trialId; });
+      return t && g.codes.indexOf(t.speciesCode) !== -1;
+    });
+    var names = g.codes.map(function(c) { return SPECIES_NAMES_[c] || c; }).join(' + ');
+    return '<div style="margin-top:22px; padding-top:14px; border-top:2px solid var(--border);">' +
+      '<div class="card-title" style="border:none; padding:0; margin-bottom:2px;">' + g.title + ' Analysis</div>' +
+      '<div class="stat-caption" style="margin:0 0 10px;">' + escapeHtml_(names) + '</div>' +
+      (recs.length ? vaGroupStatsHtml_(recs) : '<div class="empty-state">No scored ' + g.title.toLowerCase() + ' trials yet.</div>') +
+    '</div>';
+  }).join('');
+
+  el.innerHTML = statsHtml + stepsHtml + vaRegionChartsHtml_(withData) + speciesHtml;
+}
+
+function vaAvg_(recs, key) {
+  var nums = recs.map(function(va) { return parseFloat(va[key]); }).filter(function(n) { return !isNaN(n); });
+  return nums.length ? Math.round((nums.reduce(function(a, b) { return a + b; }, 0) / nums.length) * 10) / 10 : null;
+}
+
+function vaRegionChartsHtml_(recs) {
   var regionGroups = {};
-  withData.forEach(function(va) {
+  recs.forEach(function(va) {
     if (!va.triggerRegion || va.triggerRegion === 'NIL') return;
     if (!regionGroups[va.triggerRegion]) regionGroups[va.triggerRegion] = { key: va.triggerRegion, label: REGION_NAMES[va.triggerRegion] || va.triggerRegion, total: 0 };
     regionGroups[va.triggerRegion].total++;
   });
   var regionRows = Object.keys(regionGroups).map(function(k) { return regionGroups[k]; })
     .sort(function(a, b) { return b.total - a.total; });
-  var regionChartHtml = '<div style="margin-top:16px;"><div class="card-title" style="border:none; padding:0; margin-bottom:8px;">Region That Triggered the Bite</div>' +
-    buildCountBarChartHtml_(regionRows, 'No triggering region recorded yet.', 'var(--danger)', function(n) { return ' trial' + (n === 1 ? '' : 's'); }) +
-    '</div>';
-
   var strikeGroups = {};
-  withData.forEach(function(va) {
+  recs.forEach(function(va) {
     (va.strikeRegions || []).forEach(function(r) {
       if (!r) return;
       if (!strikeGroups[r]) strikeGroups[r] = { key: r, label: r, total: 0 };
@@ -2467,11 +2488,24 @@ function renderVideoAnalysisSummary() {
   });
   var strikeRows = Object.keys(strikeGroups).map(function(k) { return strikeGroups[k]; })
     .sort(function(a, b) { return b.total - a.total; });
-  var strikeChartHtml = '<div style="margin-top:16px;"><div class="card-title" style="border:none; padding:0; margin-bottom:8px;">Region Stepped, All Strikes</div>' +
-    buildCountBarChartHtml_(strikeRows, 'No per-strike regions recorded yet.', 'var(--danger)', function(n) { return ' strike' + (n === 1 ? '' : 's'); }) +
+  var titleStyle = 'border:none; padding:0; margin-bottom:8px;';
+  return '<div style="margin-top:16px;"><div class="card-title" style="' + titleStyle + '">Region That Triggered the Bite</div>' +
+      buildCountBarChartHtml_(regionRows, 'No triggering region recorded yet.', 'var(--danger)', function(n) { return ' trial' + (n === 1 ? '' : 's'); }) +
+    '</div>' +
+    '<div style="margin-top:16px;"><div class="card-title" style="' + titleStyle + '">Region Stepped, All Strikes</div>' +
+      buildCountBarChartHtml_(strikeRows, 'No per-strike regions recorded yet.', 'var(--danger)', function(n) { return ' strike' + (n === 1 ? '' : 's'); }) +
     '</div>';
+}
 
-  el.innerHTML = statsHtml + stepsHtml + regionChartHtml + strikeChartHtml;
+function vaGroupStatsHtml_(recs) {
+  function tile_(v, label) { return '<div class="stat-tile"><div class="stat-value">' + (v === null ? '—' : v) + '</div><div class="stat-label">' + label + '</div></div>'; }
+  var dns = recs.filter(function(va) { return va.strikes === 'NIL'; }).length;
+  return '<div class="stat-row">' +
+      tile_(recs.length, 'Trials Scored') + tile_(dns, 'DNS Trials') +
+      tile_(vaAvg_(recs, 'strikes'), 'Avg Strikes / Trial') + tile_(vaAvg_(recs, 'bites'), 'Avg Bites / Trial') +
+    '</div>' +
+    '<div class="stat-row" style="margin-top:12px;">' + tile_(vaAvg_(recs, 'stepsUntilBite'), 'Avg Steps Until Bite') + '</div>' +
+    vaRegionChartsHtml_(recs);
 }
 
 function changeMonth(delta) {
