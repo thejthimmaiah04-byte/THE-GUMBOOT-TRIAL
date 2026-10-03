@@ -2409,56 +2409,20 @@ function renderVideoAnalysisList() {
 function renderVideoAnalysisSummary() {
   var el = document.getElementById('va-summary-body');
   if (!el) return;
-  var totalTrials = allTrialsCache.length;
-  var fullyReviewedTrials = allTrialsCache.filter(function(t) {
-    var va = videoAnalysisFor_(t.trialId);
-    return va && va.reviewed.length === 4 && va.reviewed.every(Boolean);
-  }).length;
-  var reviewedVideoCount = videoAnalysisCache.reduce(function(sum, va) {
-    return sum + (va.reviewed || []).filter(Boolean).length;
-  }, 0);
-  var withData = videoAnalysisCache.filter(function(va) {
-    return va.strikes !== '' || va.bites !== '' || va.stepsUntilBite !== '' || (va.triggerRegion && va.triggerRegion !== 'NIL') || (va.strikeRegions || []).some(Boolean);
-  });
-  if (withData.length === 0) {
-    el.innerHTML = '<div class="empty-state">No data entered yet — summary will appear once trials are scored.</div>';
-    return;
-  }
-  function numsOf_(key) {
-    return withData.map(function(va) { return parseFloat(va[key]); }).filter(function(n) { return !isNaN(n); });
-  }
-  function avg_(arr) { return arr.length ? Math.round((arr.reduce(function(a, b) { return a + b; }, 0) / arr.length) * 10) / 10 : null; }
-  var avgStrikes = avg_(numsOf_('strikes'));
-  var avgBites = avg_(numsOf_('bites'));
-  var avgSteps = avg_(numsOf_('stepsUntilBite'));
-
-  var statsHtml = '<div class="stat-row">' +
-    '<div class="stat-tile"><div class="stat-value">' + fullyReviewedTrials + ' / ' + totalTrials + '</div><div class="stat-label">Trials Fully Reviewed</div></div>' +
-    '<div class="stat-tile"><div class="stat-value">' + reviewedVideoCount + ' / ' + (totalTrials * 4) + '</div><div class="stat-label">Videos Watched</div></div>' +
-    '<div class="stat-tile"><div class="stat-value">' + (avgStrikes === null ? '—' : avgStrikes) + '</div><div class="stat-label">Avg Strikes / Trial</div></div>' +
-    '<div class="stat-tile"><div class="stat-value">' + (avgBites === null ? '—' : avgBites) + '</div><div class="stat-label">Avg Bites / Trial</div></div>' +
-    '</div><div class="stat-caption">Data rates are based on the ' + withData.length + ' trial' + (withData.length === 1 ? '' : 's') + ' scored so far, out of ' + totalTrials + ' total trials.</div>';
-
-  var stepsHtml = '<div class="stat-row" style="margin-top:12px;">' +
-    '<div class="stat-tile"><div class="stat-value">' + (avgSteps === null ? '—' : avgSteps) + '</div><div class="stat-label">Avg Steps Until Bite</div></div>' +
-    '<div class="stat-tile"><div class="stat-value">' + withData.filter(function(va) { return va.strikes === 'NIL'; }).length + '</div><div class="stat-label">DNS Trials</div></div>' +
-    '</div>';
-
-  var SPECIES_GROUPS_ = Object.keys(SPECIES_NAMES_).map(function(code) {
-    return { title: SPECIES_NAMES_[code], codes: [code] };
-  });
-  var speciesHtml = SPECIES_GROUPS_.map(function(g) {
-    var recs = withData.filter(function(va) {
-      var t = allTrialsCache.find(function(x) { return x.trialId === va.trialId; });
-      return t && g.codes.indexOf(t.speciesCode) !== -1;
-    });
-    return '<div style="margin-top:22px; padding-top:14px; border-top:2px solid var(--border);">' +
-      '<div class="card-title" style="border:none; padding:0; margin-bottom:10px;">' + escapeHtml_(g.title) + ' (' + g.codes[0] + ')</div>' +
-      (recs.length ? vaGroupStatsHtml_(recs) : '<div class="empty-state">No scored trials for this species yet.</div>') +
-    '</div>';
+  // Every figure is species-specific — one section per species, in this order
+  // (any species not listed here is appended after).
+  var order = ['NN', 'DR', 'EC', 'BC'];
+  var codes = order.filter(function(c) { return SPECIES_NAMES_[c]; })
+    .concat(Object.keys(SPECIES_NAMES_).filter(function(c) { return order.indexOf(c) === -1; }));
+  el.innerHTML = codes.map(function(code, i) {
+    var trials = allTrialsCache.filter(function(t) { return t.speciesCode === code; });
+    var ids = {};
+    trials.forEach(function(t) { ids[t.trialId] = true; });
+    var vas = videoAnalysisCache.filter(function(va) { return ids[va.trialId]; });
+    return '<div style="' + (i ? 'margin-top:22px; padding-top:14px; border-top:2px solid var(--border);' : '') + '">' +
+      '<div class="card-title" style="border:none; padding:0; margin-bottom:10px;">' + escapeHtml_(SPECIES_NAMES_[code]) + ' (' + code + ')</div>' +
+      vaGroupStatsHtml_(trials, vas) + '</div>';
   }).join('');
-
-  el.innerHTML = statsHtml + stepsHtml + vaRegionChartsHtml_(withData) + speciesHtml;
 }
 
 function vaAvg_(recs, key) {
@@ -2494,15 +2458,25 @@ function vaRegionChartsHtml_(recs) {
     '</div>';
 }
 
-function vaGroupStatsHtml_(recs) {
+function vaGroupStatsHtml_(trials, vas) {
   function tile_(v, label) { return '<div class="stat-tile"><div class="stat-value">' + (v === null ? '—' : v) + '</div><div class="stat-label">' + label + '</div></div>'; }
+  if (trials.length === 0) return '<div class="empty-state">No trials recorded for this species yet.</div>';
+  var fully = vas.filter(function(va) { return va.reviewed.length === 4 && va.reviewed.every(Boolean); }).length;
+  var watched = vas.reduce(function(sum, va) { return sum + (va.reviewed || []).filter(Boolean).length; }, 0);
+  var recs = vas.filter(function(va) {
+    return va.strikes !== '' || va.bites !== '' || va.stepsUntilBite !== '' || (va.triggerRegion && va.triggerRegion !== 'NIL') || (va.strikeRegions || []).some(Boolean);
+  });
   var dns = recs.filter(function(va) { return va.strikes === 'NIL'; }).length;
-  return '<div class="stat-row">' +
+  var html = '<div class="stat-row">' +
+      tile_(fully + ' / ' + trials.length, 'Trials Fully Reviewed') + tile_(watched + ' / ' + (trials.length * 4), 'Videos Watched') +
       tile_(recs.length, 'Trials Scored') + tile_(dns, 'DNS Trials') +
+    '</div>';
+  if (recs.length === 0) return html + '<div class="empty-state">No data entered yet for this species.</div>';
+  return html +
+    '<div class="stat-row" style="margin-top:12px;">' +
       tile_(vaAvg_(recs, 'strikes'), 'Avg Strikes / Trial') + tile_(vaAvg_(recs, 'bites'), 'Avg Bites / Trial') +
-    '</div>' +
-    '<div class="stat-row" style="margin-top:12px;">' + tile_(vaAvg_(recs, 'stepsUntilBite'), 'Avg Steps Until Bite') + '</div>' +
-    vaRegionChartsHtml_(recs);
+      tile_(vaAvg_(recs, 'stepsUntilBite'), 'Avg Steps Until Bite') +
+    '</div>' + vaRegionChartsHtml_(recs);
 }
 
 function changeMonth(delta) {
