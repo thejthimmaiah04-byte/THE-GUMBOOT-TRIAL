@@ -369,7 +369,12 @@ function saveVideoAnalysis(data) {
     for (var v = 0; v < 4; v++) row.push(!!reviewed[v]);
     row.push(data.strikes || '', data.bites || '', data.stepsUntilBite || '', data.triggerRegion || '');
     row.push(sanitizeCell_(data.notes || ''));
-    row.push(sanitizeCell_(data.reviewedBy || ''), todayDateStr_());
+    // Reviewed_By accumulates every distinct reviewer who has saved this trial.
+    var names = rowIdx === -1 ? [] : String(values[rowIdx][10] || '').split(',');
+    var newName = String(data.reviewedBy || '').replace(/,/g, ' ').trim();
+    names = names.map(function(n) { return n.trim(); }).filter(Boolean);
+    if (newName && names.map(function(n) { return n.toLowerCase(); }).indexOf(newName.toLowerCase()) === -1) names.push(newName);
+    row.push(sanitizeCell_(names.join(', ')), todayDateStr_());
     // Region stepped for each strike, in strike order, '|'-joined (blank slots kept).
     var regions = (data.strikeRegions || []).map(function(x) { return sanitizeCell_(String(x || '').replace(/|/g, '')); });
     row.push(regions.some(Boolean) ? regions.join('|') : '');

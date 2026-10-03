@@ -346,6 +346,9 @@
     }
     .va-badge-check input { position: absolute; inset: 0; opacity: 0; width: 24px; height: 24px; margin: 0; cursor: pointer; }
     .va-row { position: relative; }
+.va-row .reg-id { flex: 1; }
+.va-initials { display: flex; gap: 4px; margin-right: 16px; }
+.va-initial { width: 22px; height: 22px; border-radius: 50%; background: var(--bg); border: 1.5px solid var(--border); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .va-strike-title { margin-top: 16px; font-size: 13px; font-weight: 700; color: var(--text-mid); }
 .va-strike-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .va-strike-tag { flex-shrink: 0; min-width: 70px; text-align: center; padding: 8px 10px; border-radius: 999px; background: var(--bg); border: 1.5px solid var(--border); font-size: 13px; font-weight: 700; }
@@ -1412,6 +1415,7 @@
   <div class="card">
     <button type="button" class="va-back-btn" onclick="switchPage('video-analysis')">&#8249; Back to trials</button>
     <div class="card-title" id="va-review-trial-id"></div>
+    <div id="va-review-by" style="font-size:12px; color:var(--text-mid); margin-bottom:6px;"></div>
     <label>Videos Watched</label>
     <div class="va-badges" id="va-review-badges"></div>
     <div id="va-review-fields"></div>
@@ -1618,6 +1622,39 @@ function promptRecorderName() {
     localStorage.setItem(RECORDER_KEY, name.trim());
     updateRecorderDisplay();
   }
+}
+
+// ----- Video Analysis reviewer name (linked to this device) -----
+var REVIEWER_KEY = 'tlt_reviewer_name';
+var reviewerPromptShown_ = false;
+
+function getReviewerName() {
+  try { return localStorage.getItem(REVIEWER_KEY) || ''; } catch (e) { return ''; }
+}
+
+function ensureReviewerName_(force) {
+  if (getReviewerName()) return true;
+  if (reviewerPromptShown_ && !force) return false;
+  reviewerPromptShown_ = true;
+  var name = prompt('Video Analysis: who is reviewing on this device? Your name will be saved on this device and recorded as the reviewer on everything you save here.', '');
+  name = (name || '').replace(/,/g, ' ').trim();
+  if (!name) return false;
+  try { localStorage.setItem(REVIEWER_KEY, name); } catch (e) {}
+  return true;
+}
+
+function vaMergeNames_(existing, name) {
+  var names = String(existing || '').split(',').map(function(n) { return n.trim(); }).filter(Boolean);
+  if (name && names.map(function(n) { return n.toLowerCase(); }).indexOf(name.toLowerCase()) === -1) names.push(name);
+  return names.join(', ');
+}
+
+function vaInitialsHtml_(reviewedBy) {
+  var names = String(reviewedBy || '').split(',').map(function(n) { return n.trim(); }).filter(Boolean);
+  if (!names.length) return '';
+  return '<span class="va-initials">' + names.map(function(n) {
+    return '<span class="va-initial" title="' + escapeHtml_(n) + '">' + escapeHtml_(n.charAt(0).toUpperCase()) + '</span>';
+  }).join('') + '</span>';
 }
 
 function updateRecorderDisplay() {
@@ -1872,7 +1909,7 @@ function renderPage(name) {
   if (name === 'boot-list') renderBootList();
   if (name === 'snake-list') renderSnakeList();
   if (name === 'results') { renderResultsTrialsTable(); renderControlTrialsTable(); renderResultsAnalytics(); }
-  if (name === 'video-analysis') { renderVideoAnalysisList(); renderVideoAnalysisSummary(); }
+  if (name === 'video-analysis') { renderVideoAnalysisList(); renderVideoAnalysisSummary(); setTimeout(function() { ensureReviewerName_(false); }, 50); }
   if (name === 'video-review') renderVideoReview();
   window.scrollTo(0, 0);
 }
@@ -2187,6 +2224,7 @@ function renderVideoReview() {
   var va = videoAnalysisFor_(t.trialId) || emptyVideoAnalysis_(t.trialId);
   document.getElementById('header-sub').textContent = t.trialId;
   document.getElementById('va-review-trial-id').textContent = t.trialId;
+  document.getElementById('va-review-by').textContent = va.reviewedBy ? 'Reviewed by: ' + va.reviewedBy : '';
   document.getElementById('va-review-badges').innerHTML = vaBadgesHtml_('va-review-', va);
   document.getElementById('va-review-fields').innerHTML = vaDataFieldsHtml_('va-review-', va);
 }
@@ -2194,6 +2232,7 @@ function renderVideoReview() {
 function saveVideoReview() {
   var t = vaReviewTrial;
   if (!t) return;
+  if (!ensureReviewerName_(true)) { showToast('Please enter your name to save a review.', 'error'); return; }
   var reviewed = [1, 2, 3, 4].map(function(n) { return document.getElementById('va-review-r' + n).checked; });
   var payload = {
     trialId: t.trialId,
@@ -2203,7 +2242,7 @@ function saveVideoReview() {
     stepsUntilBite: document.getElementById('va-review-steps').value.trim(),
     triggerRegion: document.getElementById('va-review-region').value,
     notes: document.getElementById('va-review-notes').value.trim(),
-    reviewedBy: getRecorderName()
+    reviewedBy: getReviewerName()
   };
   payload.strikeRegions = vaCollectStrikeRegions_('va-review-', Math.max(0, Math.min(parseInt(payload.strikes, 10) || 0, 30)));
   apiPost('saveVideoAnalysis', payload).then(function(result) {
@@ -2219,7 +2258,7 @@ function saveVideoReview() {
       var record = {
         trialId: t.trialId, reviewed: reviewed, strikes: payload.strikes, bites: payload.bites,
         stepsUntilBite: payload.stepsUntilBite, triggerRegion: payload.triggerRegion, notes: payload.notes,
-        strikeRegions: payload.strikeRegions, reviewedBy: payload.reviewedBy, lastEditedDate: ''
+        strikeRegions: payload.strikeRegions, reviewedBy: vaMergeNames_((videoAnalysisFor_(t.trialId) || {}).reviewedBy, payload.reviewedBy), lastEditedDate: ''
       };
       var existingIdx = videoAnalysisCache.findIndex(function(v) { return v.trialId === t.trialId; });
       if (existingIdx === -1) videoAnalysisCache.push(record); else videoAnalysisCache[existingIdx] = record;
@@ -2321,7 +2360,7 @@ function renderVideoAnalysisList() {
       var complete = va && va.reviewed.length === 4 && va.reviewed.every(Boolean);
       return '<div class="reg-list-item va-row" onclick="openVideoReview(' + idx + ')">' +
         (complete ? '<span class="va-complete-dot" title="All 4 videos reviewed"></span>' : '') +
-        '<div class="reg-id">' + escapeHtml_(t.trialId) + '</div>' +
+                      '<div class="reg-id">' + escapeHtml_(t.trialId) + '</div>' + vaInitialsHtml_(va && va.reviewedBy) +
       '</div>';
     }).join('') +
   '</div>';
