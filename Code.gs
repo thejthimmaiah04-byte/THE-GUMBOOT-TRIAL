@@ -128,7 +128,8 @@ var VIDEO_HEADERS = [
   'Trial_ID',
   'Video1_Reviewed', 'Video2_Reviewed', 'Video3_Reviewed', 'Video4_Reviewed',
   'Strikes', 'Bites', 'StepsUntilBite', 'TriggerRegion', 'Notes',
-  'Reviewed_By', 'Last_Edited_Date'
+  'Reviewed_By', 'Last_Edited_Date',
+  'StrikeRegions'
 ];
 
 var SNAKE_HEADERS = [
@@ -322,7 +323,8 @@ function videoRowToObject_(r) {
     trialId: r[0],
     reviewed: [!!r[1], !!r[2], !!r[3], !!r[4]],
     strikes: r[5], bites: r[6], stepsUntilBite: r[7], triggerRegion: r[8], notes: r[9],
-    reviewedBy: r[10], lastEditedDate: r[11]
+    reviewedBy: r[10], lastEditedDate: r[11],
+    strikeRegions: r[12] ? String(r[12]).split('|') : []
   };
 }
 
@@ -368,6 +370,9 @@ function saveVideoAnalysis(data) {
     row.push(data.strikes || '', data.bites || '', data.stepsUntilBite || '', data.triggerRegion || '');
     row.push(sanitizeCell_(data.notes || ''));
     row.push(sanitizeCell_(data.reviewedBy || ''), todayDateStr_());
+    // Region stepped for each strike, in strike order, '|'-joined (blank slots kept).
+    var regions = (data.strikeRegions || []).map(function(x) { return sanitizeCell_(String(x || '').replace(/|/g, '')); });
+    row.push(regions.some(Boolean) ? regions.join('|') : '');
 
     if (rowIdx === -1) {
       sheet.appendRow(row);

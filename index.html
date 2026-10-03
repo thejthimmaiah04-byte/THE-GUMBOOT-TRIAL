@@ -346,6 +346,10 @@
     }
     .va-badge-check input { position: absolute; inset: 0; opacity: 0; width: 24px; height: 24px; margin: 0; cursor: pointer; }
     .va-row { position: relative; }
+.va-strike-title { margin-top: 16px; font-size: 13px; font-weight: 700; color: var(--text-mid); }
+.va-strike-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.va-strike-tag { flex-shrink: 0; min-width: 70px; text-align: center; padding: 8px 10px; border-radius: 999px; background: var(--bg); border: 1.5px solid var(--border); font-size: 13px; font-weight: 700; }
+.va-strike-row select { flex: 1; margin: 0; }
     .va-complete-dot {
       /* A literal green, not var(--green) (which is this app's dark navy
          brand color, not a visually green one) — this dot specifically
@@ -2090,7 +2094,7 @@ function videoAnalysisFor_(trialId) {
 }
 
 function emptyVideoAnalysis_(trialId) {
-  return { trialId: trialId, reviewed: [false, false, false, false], strikes: '', bites: '', stepsUntilBite: '', triggerRegion: '', notes: '' };
+  return { trialId: trialId, reviewed: [false, false, false, false], strikes: '', bites: '', stepsUntilBite: '', triggerRegion: '', notes: '', strikeRegions: [] };
 }
 
 // One set of fields per trial, not per video — all 4 videos are watched
@@ -2104,12 +2108,43 @@ function emptyVideoAnalysis_(trialId) {
 // here.
 var VA_TRIGGER_REGIONS_ = ['Head', 'Neck', 'Mid Body', 'Tail'];
 
+function vaStrikeRegionsHtml_(idPrefix, count, values) {
+  count = Math.max(0, Math.min(parseInt(count, 10) || 0, 30));
+  if (count === 0) return '';
+  var rows = '';
+  for (var n = 1; n <= count; n++) {
+    var cur = (values && values[n - 1]) || '';
+    rows += '<div class="va-strike-row"><div class="va-strike-tag">Strike ' + n + '</div>' +
+      '<select id="' + idPrefix + 'sr' + n + '"><option value="">-- region stepped --</option>' +
+      VA_TRIGGER_REGIONS_.map(function(r) {
+        return '<option value="' + r + '"' + (cur === r ? ' selected' : '') + '>' + escapeHtml_(r) + '</option>';
+      }).join('') + '</select></div>';
+  }
+  return '<div class="va-strike-title">Region stepped, per strike</div>' + rows;
+}
+
+function vaCollectStrikeRegions_(idPrefix, count) {
+  var out = [];
+  for (var n = 1; n <= count; n++) {
+    var el = document.getElementById(idPrefix + 'sr' + n);
+    out.push(el ? el.value : '');
+  }
+  return out;
+}
+
+function vaRefreshStrikeRegions_(idPrefix) {
+  var count = Math.max(0, Math.min(parseInt(document.getElementById(idPrefix + 'strikes').value, 10) || 0, 30));
+  var box = document.getElementById(idPrefix + 'strike-regions');
+  var prev = vaCollectStrikeRegions_(idPrefix, 30);
+  box.innerHTML = vaStrikeRegionsHtml_(idPrefix, count, prev);
+}
+
 function vaDataFieldsHtml_(idPrefix, va) {
   var regionOptions = '<option value="">-- region --</option>' + VA_TRIGGER_REGIONS_.map(function(r) {
     return '<option value="' + r + '"' + (va.triggerRegion === r ? ' selected' : '') + '>' + escapeHtml_(r) + '</option>';
   }).join('');
   return '<div class="row">' +
-      '<div><label for="' + idPrefix + 'strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'strikes" value="' + escapeHtml_(String(va.strikes || '')) + '"></div>' +
+      '<div><label for="' + idPrefix + 'strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'strikes" value="' + escapeHtml_(String(va.strikes || '')) + '" oninput="vaRefreshStrikeRegions_(\'' + idPrefix + '\')"></div>' +
       '<div><label for="' + idPrefix + 'bites">Number of Bites</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'bites" value="' + escapeHtml_(String(va.bites || '')) + '"></div>' +
     '</div>' +
     '<div class="row">' +
@@ -2117,7 +2152,8 @@ function vaDataFieldsHtml_(idPrefix, va) {
       '<div><label for="' + idPrefix + 'region">Region That Triggered Bite</label><select id="' + idPrefix + 'region">' + regionOptions + '</select></div>' +
     '</div>' +
     '<label for="' + idPrefix + 'notes">Notes</label>' +
-    '<textarea id="' + idPrefix + 'notes" rows="3" placeholder="Anything worth flagging about this trial\'s videos...">' + escapeHtml_(va.notes || '') + '</textarea>';
+    '<textarea id="' + idPrefix + 'notes" rows="3" placeholder="Anything worth flagging about this trial\'s videos...">' + escapeHtml_(va.notes || '') + '</textarea>' +
+    '<div id="' + idPrefix + 'strike-regions">' + vaStrikeRegionsHtml_(idPrefix, va.strikes, va.strikeRegions) + '</div>';
 }
 
 function vaBadgesHtml_(idPrefix, va) {
@@ -2169,6 +2205,7 @@ function saveVideoReview() {
     notes: document.getElementById('va-review-notes').value.trim(),
     reviewedBy: getRecorderName()
   };
+  payload.strikeRegions = vaCollectStrikeRegions_('va-review-', Math.max(0, Math.min(parseInt(payload.strikes, 10) || 0, 30)));
   apiPost('saveVideoAnalysis', payload).then(function(result) {
     return { success: result.success, message: result.message };
   }).catch(function() {
@@ -2182,7 +2219,7 @@ function saveVideoReview() {
       var record = {
         trialId: t.trialId, reviewed: reviewed, strikes: payload.strikes, bites: payload.bites,
         stepsUntilBite: payload.stepsUntilBite, triggerRegion: payload.triggerRegion, notes: payload.notes,
-        reviewedBy: payload.reviewedBy, lastEditedDate: ''
+        strikeRegions: payload.strikeRegions, reviewedBy: payload.reviewedBy, lastEditedDate: ''
       };
       var existingIdx = videoAnalysisCache.findIndex(function(v) { return v.trialId === t.trialId; });
       if (existingIdx === -1) videoAnalysisCache.push(record); else videoAnalysisCache[existingIdx] = record;
@@ -2306,7 +2343,7 @@ function renderVideoAnalysisSummary() {
     return sum + (va.reviewed || []).filter(Boolean).length;
   }, 0);
   var withData = videoAnalysisCache.filter(function(va) {
-    return va.strikes !== '' || va.bites !== '' || va.stepsUntilBite !== '' || va.triggerRegion;
+    return va.strikes !== '' || va.bites !== '' || va.stepsUntilBite !== '' || va.triggerRegion || (va.strikeRegions || []).some(Boolean);
   });
   if (withData.length === 0) {
     el.innerHTML = '<div class="empty-state">No data entered yet — summary will appear once trials are scored.</div>';
@@ -2344,7 +2381,21 @@ function renderVideoAnalysisSummary() {
     buildCountBarChartHtml_(regionRows, 'No triggering region recorded yet.', 'var(--danger)', function(n) { return ' trial' + (n === 1 ? '' : 's'); }) +
     '</div>';
 
-  el.innerHTML = statsHtml + stepsHtml + regionChartHtml;
+  var strikeGroups = {};
+  withData.forEach(function(va) {
+    (va.strikeRegions || []).forEach(function(r) {
+      if (!r) return;
+      if (!strikeGroups[r]) strikeGroups[r] = { key: r, label: r, total: 0 };
+      strikeGroups[r].total++;
+    });
+  });
+  var strikeRows = Object.keys(strikeGroups).map(function(k) { return strikeGroups[k]; })
+    .sort(function(a, b) { return b.total - a.total; });
+  var strikeChartHtml = '<div style="margin-top:16px;"><div class="card-title" style="border:none; padding:0; margin-bottom:8px;">Region Stepped, All Strikes</div>' +
+    buildCountBarChartHtml_(strikeRows, 'No per-strike regions recorded yet.', 'var(--danger)', function(n) { return ' strike' + (n === 1 ? '' : 's'); }) +
+    '</div>';
+
+  el.innerHTML = statsHtml + stepsHtml + regionChartHtml + strikeChartHtml;
 }
 
 function changeMonth(delta) {
