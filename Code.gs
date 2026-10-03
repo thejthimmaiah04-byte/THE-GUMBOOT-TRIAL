@@ -376,7 +376,7 @@ function saveVideoAnalysis(data) {
     if (newName && names.map(function(n) { return n.toLowerCase(); }).indexOf(newName.toLowerCase()) === -1) names.push(newName);
     row.push(sanitizeCell_(names.join(', ')), todayDateStr_());
     // Region stepped for each strike, in strike order, '|'-joined (blank slots kept).
-    var regions = (data.strikeRegions || []).map(function(x) { return sanitizeCell_(String(x || '').replace(/|/g, '')); });
+    var regions = (data.strikeRegions || []).map(function(x) { return sanitizeCell_(String(x || '').replace(/\|/g, '')); });
     row.push(regions.some(Boolean) ? regions.join('|') : '');
 
     if (rowIdx === -1) {

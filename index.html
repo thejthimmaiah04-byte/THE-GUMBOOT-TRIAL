@@ -346,6 +346,8 @@
     }
     .va-badge-check input { position: absolute; inset: 0; opacity: 0; width: 24px; height: 24px; margin: 0; cursor: pointer; }
     .va-row { position: relative; }
+    .va-dns-toggle { display: flex; align-items: center; gap: 10px; margin: 14px 0 0; font-weight: 700; cursor: pointer; }
+    .va-dns-toggle input { width: 22px; height: 22px; margin: 0; flex-shrink: 0; }
 .va-row .reg-id { flex: 1; }
 .va-initials { display: flex; gap: 4px; margin-right: 16px; }
 .va-initial { width: 22px; height: 22px; border-radius: 50%; background: var(--bg); border: 1.5px solid var(--border); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
@@ -2180,17 +2182,51 @@ function vaDataFieldsHtml_(idPrefix, va) {
   var regionOptions = '<option value="">-- region --</option>' + VA_TRIGGER_REGIONS_.map(function(r) {
     return '<option value="' + r + '"' + (va.triggerRegion === r ? ' selected' : '') + '>' + escapeHtml_(r) + '</option>';
   }).join('');
-  return '<div class="row">' +
-      '<div><label for="' + idPrefix + 'strikes">Number of Strikes</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'strikes" value="' + escapeHtml_(String(va.strikes || '')) + '" oninput="vaRefreshStrikeRegions_(\'' + idPrefix + '\')"></div>' +
-      '<div><label for="' + idPrefix + 'bites">Number of Bites</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'bites" value="' + escapeHtml_(String(va.bites || '')) + '"></div>' +
+  var dns = va.strikes === 'NIL';
+  function numField_(id, val) {
+    return dns
+      ? '<input type="text" id="' + idPrefix + id + '" value="NIL" disabled>'
+      : '<input type="number" min="0" inputmode="numeric" id="' + idPrefix + id + '" value="' + escapeHtml_(String(val || '')) + '"' +
+        (id === 'strikes' ? ' oninput="vaRefreshStrikeRegions_(\'' + idPrefix + '\')"' : '') + '>';
+  }
+  var regionSelect = dns
+    ? '<select id="' + idPrefix + 'region" disabled><option value="NIL" selected>NIL</option></select>'
+    : '<select id="' + idPrefix + 'region">' + regionOptions + '</select>';
+  return '<label class="va-dns-toggle"><input type="checkbox" id="' + idPrefix + 'dns"' + (dns ? ' checked' : '') +
+      ' onchange="vaToggleDns_(\'' + idPrefix + '\', this.checked)"> <span>DNS (Did Not Strike)</span></label>' +
+    '<div class="row">' +
+      '<div><label for="' + idPrefix + 'strikes">Number of Strikes</label>' + numField_('strikes', va.strikes) + '</div>' +
+      '<div><label for="' + idPrefix + 'bites">Number of Bites</label>' + numField_('bites', va.bites) + '</div>' +
     '</div>' +
     '<div class="row">' +
-      '<div><label for="' + idPrefix + 'steps">Steps Until Bite</label><input type="number" min="0" inputmode="numeric" id="' + idPrefix + 'steps" value="' + escapeHtml_(String(va.stepsUntilBite || '')) + '"></div>' +
-      '<div><label for="' + idPrefix + 'region">Region That Triggered Bite</label><select id="' + idPrefix + 'region">' + regionOptions + '</select></div>' +
+      '<div><label for="' + idPrefix + 'steps">Steps Until Bite</label>' + numField_('steps', va.stepsUntilBite) + '</div>' +
+      '<div><label for="' + idPrefix + 'region">Region That Triggered Bite</label>' + regionSelect + '</div>' +
     '</div>' +
     '<label for="' + idPrefix + 'notes">Notes</label>' +
     '<textarea id="' + idPrefix + 'notes" rows="3" placeholder="Anything worth flagging about this trial\'s videos...">' + escapeHtml_(va.notes || '') + '</textarea>' +
-    '<div id="' + idPrefix + 'strike-regions">' + vaStrikeRegionsHtml_(idPrefix, va.strikes, va.strikeRegions) + '</div>';
+    '<div id="' + idPrefix + 'strike-regions">' + (dns ? '' : vaStrikeRegionsHtml_(idPrefix, va.strikes, va.strikeRegions)) + '</div>';
+}
+
+// DNS (Did Not Strike): the four data fields read "NIL" and are locked, since
+// there is nothing to count. Unticking clears them so real values can be entered.
+function vaToggleDns_(idPrefix, on) {
+  ['strikes', 'bites', 'steps'].forEach(function(id) {
+    var el = document.getElementById(idPrefix + id);
+    el.type = on ? 'text' : 'number';
+    el.value = on ? 'NIL' : '';
+    el.disabled = on;
+  });
+  var sel = document.getElementById(idPrefix + 'region');
+  if (on) {
+    sel.innerHTML = '<option value="NIL" selected>NIL</option>';
+    sel.disabled = true;
+  } else {
+    sel.disabled = false;
+    sel.innerHTML = '<option value="">-- region --</option>' + VA_TRIGGER_REGIONS_.map(function(r) {
+      return '<option value="' + r + '">' + escapeHtml_(r) + '</option>';
+    }).join('');
+  }
+  document.getElementById(idPrefix + 'strike-regions').innerHTML = '';
 }
 
 function vaBadgesHtml_(idPrefix, va) {
@@ -2382,7 +2418,7 @@ function renderVideoAnalysisSummary() {
     return sum + (va.reviewed || []).filter(Boolean).length;
   }, 0);
   var withData = videoAnalysisCache.filter(function(va) {
-    return va.strikes !== '' || va.bites !== '' || va.stepsUntilBite !== '' || va.triggerRegion || (va.strikeRegions || []).some(Boolean);
+    return va.strikes !== '' || va.bites !== '' || va.stepsUntilBite !== '' || (va.triggerRegion && va.triggerRegion !== 'NIL') || (va.strikeRegions || []).some(Boolean);
   });
   if (withData.length === 0) {
     el.innerHTML = '<div class="empty-state">No data entered yet — summary will appear once trials are scored.</div>';
@@ -2405,12 +2441,13 @@ function renderVideoAnalysisSummary() {
 
   var stepsHtml = '<div class="stat-row" style="margin-top:12px;">' +
     '<div class="stat-tile"><div class="stat-value">' + (avgSteps === null ? '—' : avgSteps) + '</div><div class="stat-label">Avg Steps Until Bite</div></div>' +
+    '<div class="stat-tile"><div class="stat-value">' + withData.filter(function(va) { return va.strikes === 'NIL'; }).length + '</div><div class="stat-label">DNS Trials</div></div>' +
     '</div>';
 
   // ----- Region that triggered the bite, by count -----
   var regionGroups = {};
   withData.forEach(function(va) {
-    if (!va.triggerRegion) return;
+    if (!va.triggerRegion || va.triggerRegion === 'NIL') return;
     if (!regionGroups[va.triggerRegion]) regionGroups[va.triggerRegion] = { key: va.triggerRegion, label: REGION_NAMES[va.triggerRegion] || va.triggerRegion, total: 0 };
     regionGroups[va.triggerRegion].total++;
   });
