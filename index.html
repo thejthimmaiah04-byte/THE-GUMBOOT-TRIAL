@@ -2444,20 +2444,17 @@ function renderVideoAnalysisSummary() {
     '<div class="stat-tile"><div class="stat-value">' + withData.filter(function(va) { return va.strikes === 'NIL'; }).length + '</div><div class="stat-label">DNS Trials</div></div>' +
     '</div>';
 
-  var SPECIES_GROUPS_ = [
-    { title: 'Viper', codes: ['DR', 'EC'] },
-    { title: 'Cobra', codes: ['NN'] }
-  ];
+  var SPECIES_GROUPS_ = Object.keys(SPECIES_NAMES_).map(function(code) {
+    return { title: SPECIES_NAMES_[code], codes: [code] };
+  });
   var speciesHtml = SPECIES_GROUPS_.map(function(g) {
     var recs = withData.filter(function(va) {
       var t = allTrialsCache.find(function(x) { return x.trialId === va.trialId; });
       return t && g.codes.indexOf(t.speciesCode) !== -1;
     });
-    var names = g.codes.map(function(c) { return SPECIES_NAMES_[c] || c; }).join(' + ');
     return '<div style="margin-top:22px; padding-top:14px; border-top:2px solid var(--border);">' +
-      '<div class="card-title" style="border:none; padding:0; margin-bottom:2px;">' + g.title + ' Analysis</div>' +
-      '<div class="stat-caption" style="margin:0 0 10px;">' + escapeHtml_(names) + '</div>' +
-      (recs.length ? vaGroupStatsHtml_(recs) : '<div class="empty-state">No scored ' + g.title.toLowerCase() + ' trials yet.</div>') +
+      '<div class="card-title" style="border:none; padding:0; margin-bottom:10px;">' + escapeHtml_(g.title) + ' (' + g.codes[0] + ')</div>' +
+      (recs.length ? vaGroupStatsHtml_(recs) : '<div class="empty-state">No scored trials for this species yet.</div>') +
     '</div>';
   }).join('');
 
